@@ -19,6 +19,32 @@
 
 __If you encounter a bug please [report it][bug-report].__
 
+Navaros is a router package for go with a focus on robust middleware patterns and predictable route matching.
+
+```go
+import (
+  "net/http"
+  "github.com/robertwhurst/navaros"
+)
+
+func main() {
+  router := navaros.New()
+
+  router.Get("/", helloWorld)
+
+  server := http.Server{
+    Addr: ":8080",
+    Handler: router
+  }
+
+  server.ListenAndServe()
+}
+
+func helloWorld(ctx *navaros.Context) {
+  ctx.Body = "Hello World"
+}
+```
+
 ## Help Welcome
 
 If you want to support this project by throwing be some coffee money It's
