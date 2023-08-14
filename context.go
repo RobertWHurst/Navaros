@@ -120,6 +120,10 @@ func (c *Context) Next() {
 		execWithCtxRecovery(c, func() {
 			currentMux.Handle(c)
 		})
+	} else if currentHandler, ok := c.currentHandlerOrTransformer.(HandlerFunc); ok {
+		execWithCtxRecovery(c, func() {
+			currentHandler(c)
+		})
 	} else if currentHandler, ok := c.currentHandlerOrTransformer.(func(*Context)); ok {
 		execWithCtxRecovery(c, func() {
 			currentHandler(c)
@@ -236,9 +240,6 @@ func CtxGet[V any](ctx *Context) (V, bool) {
 
 	var target V
 	tr := reflect.ValueOf(target)
-	if tr.Kind() != reflect.Pointer {
-		panic("Target must be a pointer")
-	}
 	targetType := tr.Elem().Type().PkgPath() + "." + tr.Elem().Type().Name()
 
 	contextData, ok := contextData[ctx]
@@ -261,15 +262,16 @@ func CtxMustGet[V any](ctx *Context) V {
 		ctx = ctx.parentContext
 	}
 
-	var target V
-	tr := reflect.ValueOf(target)
-
+	fmt.Println("1")
 	var tt reflect.Type
-	if tr.Kind() == reflect.Ptr {
-		tt = tr.Elem().Type()
+	if reflect.TypeOf((*V)(nil)).Kind() == reflect.Ptr {
+		fmt.Println("2")
+		tt = reflect.TypeOf((*V)(nil)).Elem()
 	} else {
-		tt = tr.Type()
+		fmt.Println("3")
+		tt = reflect.TypeOf((*V)(nil))
 	}
+	fmt.Println("4")
 
 	targetType := tt.PkgPath() + "." + tt.Name()
 

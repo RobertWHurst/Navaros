@@ -9,11 +9,11 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestNewMux(t *testing.T) {
+func TestNewNavaros(t *testing.T) {
 	navaros.New()
 }
 
-func TestMuxGetSimpleHandler(t *testing.T) {
+func TestNavarosGetSimpleHandler(t *testing.T) {
 	r := httptest.NewRequest("GET", "/a/b/c", nil)
 	w := httptest.NewRecorder()
 
@@ -29,7 +29,7 @@ func TestMuxGetSimpleHandler(t *testing.T) {
 	assert.Equal(t, "Hello World", w.Body.String())
 }
 
-func TestMuxGetMiddlewareAndHandler(t *testing.T) {
+func TestNavarosGetMiddlewareAndHandler(t *testing.T) {
 	r := httptest.NewRequest("GET", "/a/b/c", nil)
 	w := httptest.NewRecorder()
 
@@ -55,7 +55,7 @@ func TestMuxGetMiddlewareAndHandler(t *testing.T) {
 	assert.Equal(t, "Hello World", w.Body.String())
 }
 
-func TestMuxGetMiddlewareAndHandlerInline(t *testing.T) {
+func TestNavarosGetMiddlewareAndHandlerInline(t *testing.T) {
 	r := httptest.NewRequest("GET", "/a/b/c", nil)
 	w := httptest.NewRecorder()
 
@@ -80,7 +80,7 @@ func TestMuxGetMiddlewareAndHandlerInline(t *testing.T) {
 	assert.Equal(t, "Hello World", w.Body.String())
 }
 
-func TestMuxGetErroredHandler(t *testing.T) {
+func TestNavarosGetErroredHandler(t *testing.T) {
 	r := httptest.NewRequest("GET", "/a/b/c", nil)
 	w := httptest.NewRecorder()
 
@@ -101,7 +101,7 @@ func TestMuxGetErroredHandler(t *testing.T) {
 	assert.False(t, calledHandler)
 }
 
-func TestMuxGetPanickedHandler(t *testing.T) {
+func TestNavarosGetPanickedHandler(t *testing.T) {
 	r := httptest.NewRequest("GET", "/a/b/c", nil)
 	w := httptest.NewRecorder()
 
@@ -121,7 +121,7 @@ func TestMuxGetPanickedHandler(t *testing.T) {
 	assert.False(t, calledHandler)
 }
 
-func TestMuxGetSubMux(t *testing.T) {
+func TestNavarosGetSubNavaros(t *testing.T) {
 	r := httptest.NewRequest("GET", "/a/b/c", nil)
 	w := httptest.NewRecorder()
 

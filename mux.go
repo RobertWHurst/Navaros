@@ -20,6 +20,7 @@ func (m *Mux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	if ctx.Error != nil {
 		ctx.Status = 500
+		ctx.Body = ctx.Error.Error()
 	}
 
 	if ctx.Status == 0 {
