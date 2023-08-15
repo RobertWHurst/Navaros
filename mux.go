@@ -47,7 +47,7 @@ func (m *Mux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			case []byte:
 				finalBodyBytes = body
 			default:
-				marshalledBytes, err := ctx.MarshallResponseBody()
+				marshalledBytes, err := ctx.marshallResponseBody()
 				if err != nil {
 					ctx.Error = err
 				}
