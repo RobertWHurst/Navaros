@@ -15,31 +15,39 @@ type Options struct {
 func Middleware(options Options) navaros.HandlerFunc {
 	return func(ctx *navaros.Context) {
 		if !options.disableRequestBodyUnmarshaller {
-			contentType := ctx.RequestHeaders().Get("Content-Type")
-			if contentType != "application/json" {
-				ctx.Next()
-				return
-			}
-
-			requestBodyReader := ctx.RequestBodyReader()
-			requestBodyBytes, err := io.ReadAll(requestBodyReader)
-			if err != nil {
-				ctx.Error = err
-				return
-			}
-			ctx.SetRequestBodyBytes(requestBodyBytes)
-
-			ctx.SetRequestBodyUnmarshaller(func(into any) error {
-				return json.Unmarshal(requestBodyBytes, into)
-			})
+			unmarshalRequestBody(ctx)
 		}
 
 		if !options.disableResponseBodyMarshaller {
-			ctx.SetResponseBodyMarshaller(func(from any) ([]byte, error) {
-				return json.Marshal(from)
-			})
+			marshalResponseBody(ctx)
 		}
 
 		ctx.Next()
 	}
+}
+
+func unmarshalRequestBody(ctx *navaros.Context) {
+	contentType := ctx.RequestHeaders().Get("Content-Type")
+	if contentType != "application/json" {
+		ctx.Next()
+		return
+	}
+
+	requestBodyReader := ctx.RequestBodyReader()
+	requestBodyBytes, err := io.ReadAll(requestBodyReader)
+	if err != nil {
+		ctx.Error = err
+		return
+	}
+	ctx.SetRequestBodyBytes(requestBodyBytes)
+
+	ctx.SetRequestBodyUnmarshaller(func(into any) error {
+		return json.Unmarshal(requestBodyBytes, into)
+	})
+}
+
+func marshalResponseBody(ctx *navaros.Context) {
+	ctx.SetResponseBodyMarshaller(func(from any) ([]byte, error) {
+		return json.Marshal(from)
+	})
 }

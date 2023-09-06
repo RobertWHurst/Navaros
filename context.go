@@ -20,6 +20,7 @@ type Context struct {
 	path              string
 	url               *url.URL
 	params            RequestParams
+	query             url.Values
 	requestHeaders    RequestHeaders
 	requestBodyReader io.ReadCloser
 	requestBodyBytes  []byte
@@ -53,6 +54,7 @@ func NewContext(responseWriter http.ResponseWriter, request *http.Request, first
 		method:            HttpVerb(request.Method),
 		path:              request.URL.Path,
 		url:               request.URL,
+		query:             request.URL.Query(),
 		requestHeaders:    RequestHeaders(request.Header),
 		requestBodyReader: request.Body,
 
@@ -190,6 +192,11 @@ func (c *Context) Params() RequestParams {
 	return c.params
 }
 
+// Query returns the query parameters of the request.
+func (c *Context) Query() url.Values {
+	return c.query
+}
+
 // RequestHeaders returns the request headers.
 func (c *Context) RequestHeaders() RequestHeaders {
 	return c.requestHeaders
@@ -237,15 +244,16 @@ func (c *Context) SetResponseBodyMarshaller(marshaller func(from any) ([]byte, e
 // Write writes bytes to the response body. This is useful for streaming the
 // response body, or for middleware which encodes the response body.
 func (c *Context) Write(bytes []byte) (int, error) {
+	c.hasWrittenBody = true
+
 	if !c.hasWrittenHeaders {
+		c.hasWrittenHeaders = true
 		if c.Status == 0 {
 			c.Status = 200
 		}
 		c.bodyWriter.WriteHeader(c.Status)
-		c.hasWrittenHeaders = true
 	}
 
-	c.hasWrittenBody = true
 	return c.bodyWriter.Write(bytes)
 }
 
@@ -342,6 +350,9 @@ func (c *Context) tryUpdateParent() {
 	c.parentContext.Headers = c.Headers
 	c.parentContext.Body = c.Body
 	c.parentContext.Error = c.Error
+	c.parentContext.ErrorStack = c.ErrorStack
+	c.parentContext.hasWrittenHeaders = c.hasWrittenHeaders
+	c.parentContext.hasWrittenBody = c.hasWrittenBody
 }
 
 func (c *Context) tryMatchHandlerNode(node *handlerNode) bool {

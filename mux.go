@@ -1,6 +1,7 @@
 package navaros
 
 import (
+	"fmt"
 	"net/http"
 )
 
@@ -23,11 +24,29 @@ func (m *Mux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		ctx.Body = ctx.Error.Error()
 	}
 
+	finalBody := make([]byte, 0)
+	if !ctx.hasWrittenBody {
+		switch body := ctx.Body.(type) {
+		case string:
+			finalBody = []byte(body)
+		case []byte:
+			finalBody = body
+		default:
+			marshalledBytes, err := ctx.marshallResponseBody()
+			if err != nil {
+				ctx.Status = 500
+				finalBody = []byte(err.Error())
+			} else {
+				finalBody = marshalledBytes
+			}
+		}
+	}
+
 	if ctx.Status == 0 {
-		if ctx.hasWrittenBody {
-			ctx.Status = 200
-		} else {
+		if len(finalBody) == 0 {
 			ctx.Status = 404
+		} else {
+			ctx.Status = 200
 		}
 	}
 
@@ -38,23 +57,10 @@ func (m *Mux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		ctx.bodyWriter.WriteHeader(ctx.Status)
 	}
 
-	if !ctx.hasWrittenBody {
-		finalBodyBytes := make([]byte, 0)
-		if ctx.Body != nil {
-			switch body := ctx.Body.(type) {
-			case string:
-				finalBodyBytes = []byte(body)
-			case []byte:
-				finalBodyBytes = body
-			default:
-				marshalledBytes, err := ctx.marshallResponseBody()
-				if err != nil {
-					ctx.Error = err
-				}
-				finalBodyBytes = marshalledBytes
-			}
+	if len(finalBody) != 0 {
+		if _, err := ctx.bodyWriter.Write(finalBody); err != nil {
+			fmt.Printf("Error occurred when writing response: %s", err)
 		}
-		ctx.bodyWriter.Write(finalBodyBytes)
 	}
 
 	ctx.clearContextData()
