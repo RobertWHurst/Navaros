@@ -57,8 +57,14 @@ func (m *Mux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		ctx.bodyWriter.WriteHeader(ctx.Status)
 	}
 
-	if len(finalBody) != 0 {
-		if _, err := ctx.bodyWriter.Write(finalBody); err != nil {
+	hasBody := len(finalBody) != 0
+	is100Range := ctx.Status >= 100 && ctx.Status < 200
+	is204Or304 := ctx.Status == 204 || ctx.Status == 304
+
+	if hasBody {
+		if is100Range || is204Or304 {
+			fmt.Printf("Response with status %d has body but no content is expected", ctx.Status)
+		} else if _, err := ctx.bodyWriter.Write(finalBody); err != nil {
 			fmt.Printf("Error occurred when writing response: %s", err)
 		}
 	}
