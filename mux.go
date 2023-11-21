@@ -3,6 +3,8 @@ package navaros
 import (
 	"fmt"
 	"net/http"
+
+	"github.com/davecgh/go-spew/spew"
 )
 
 type Mux struct {
@@ -25,7 +27,7 @@ func (m *Mux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	finalBody := make([]byte, 0)
-	if !ctx.hasWrittenBody {
+	if !ctx.hasWrittenBody && ctx.Body != nil {
 		switch body := ctx.Body.(type) {
 		case string:
 			finalBody = []byte(body)
@@ -60,6 +62,8 @@ func (m *Mux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	hasBody := len(finalBody) != 0
 	is100Range := ctx.Status >= 100 && ctx.Status < 200
 	is204Or304 := ctx.Status == 204 || ctx.Status == 304
+
+	spew.Dump(ctx.Status, finalBody)
 
 	if hasBody {
 		if is100Range || is204Or304 {
