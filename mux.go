@@ -35,7 +35,7 @@ func (m *Mux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			marshalledBytes, err := ctx.marshallResponseBody()
 			if err != nil {
 				ctx.Status = 500
-				finalBody = []byte(err.Error())
+				fmt.Printf("Error occurred when marshalling response body: %s", err)
 			} else {
 				finalBody = marshalledBytes
 			}
