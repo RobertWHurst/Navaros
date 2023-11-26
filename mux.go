@@ -5,6 +5,8 @@ import (
 	"net/http"
 )
 
+var PrintHandlerErrors = false
+
 type Mux struct {
 	firstHandlerNode *handlerNode
 	lastHandlerNode  *handlerNode
@@ -21,7 +23,9 @@ func (m *Mux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	if ctx.Error != nil {
 		ctx.Status = 500
-		ctx.Body = ctx.Error.Error()
+		if PrintHandlerErrors {
+			fmt.Printf("Error occurred when handling request: %s\n%s", ctx.Error, ctx.ErrorStack)
+		}
 	}
 
 	finalBody := make([]byte, 0)
