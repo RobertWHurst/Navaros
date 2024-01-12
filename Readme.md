@@ -3,11 +3,11 @@
 </h1>
 
 <p align="center">
-  <a href="https://pkg.go.dev/github.com/robertwhurst/navaros">
+  <a href="https://pkg.go.dev/github.com/RobertWHurst/navaros">
     <img src="https://img.shields.io/badge/godoc-reference-blue.svg">
   </a>
-  <a href="https://goreportcard.com/report/github.com/robertwhurst/navaros">
-    <img src="https://goreportcard.com/badge/github.com/robertwhurst/navaros">
+  <a href="https://goreportcard.com/report/github.com/RobertWHurst/navaros">
+    <img src="https://goreportcard.com/badge/github.com/RobertWHurst/navaros">
   </a>
   <a href="https://github.com/RobertWHurst/Navaros/actions/workflows/ci.yml">
     <img src="https://github.com/RobertWHurst/Navaros/actions/workflows/ci.yml/badge.svg">
@@ -24,7 +24,7 @@ Navaros is a router package for go with a focus on robust middleware patterns an
 ```go
 import (
   "net/http"
-  "github.com/robertwhurst/navaros"
+  "github.com/RobertWHurst/navaros"
 )
 
 func main() {

@@ -3,7 +3,7 @@ package navaros_test
 import (
 	"testing"
 
-	"github.com/robertwhurst/navaros"
+	"github.com/RobertWHurst/navaros"
 	"github.com/stretchr/testify/assert"
 )
 

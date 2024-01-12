@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"io"
 
-	"github.com/robertwhurst/navaros"
+	"github.com/RobertWHurst/navaros"
 )
 
 type Options struct {

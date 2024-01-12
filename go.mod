@@ -1,4 +1,4 @@
-module github.com/RobertWHurst/Navaros
+module github.com/RobertWHurst/navaros
 
 go 1.20
 
