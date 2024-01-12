@@ -45,7 +45,7 @@ type Context struct {
 	currentHandlerOrTransformer      any
 
 	deadline     *time.Time
-	doneHandlers *[]func()
+	doneHandlers []func()
 	finalError   error
 }
 
@@ -73,7 +73,7 @@ func NewContext(responseWriter http.ResponseWriter, request *http.Request, first
 		},
 
 		deadline:     nil,
-		doneHandlers: &[]func(){},
+		doneHandlers: []func(){},
 		finalError:   nil,
 	}
 }
@@ -296,7 +296,7 @@ func (c Context) Deadline() (time.Time, bool) {
 // Returns a channel that returns an empty struct when the request is done.
 func (c Context) Done() <-chan struct{} {
 	doneChan := make(chan struct{})
-	*c.doneHandlers = append(*c.doneHandlers, func() {
+	c.doneHandlers = append(c.doneHandlers, func() {
 		doneChan <- struct{}{}
 	})
 	return doneChan
@@ -421,7 +421,7 @@ func (c *Context) tryMatchHandlerNode(node *handlerNode) bool {
 
 func (c *Context) markDone() {
 	c.finalError = c.Error
-	for _, doneHandler := range *c.doneHandlers {
+	for _, doneHandler := range c.doneHandlers {
 		doneHandler()
 	}
 }
