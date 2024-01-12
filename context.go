@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"runtime/debug"
 	"strings"
+	"time"
 )
 
 // Context represents a request and response. Navaros handlers access the
@@ -42,6 +43,10 @@ type Context struct {
 	matchingHandlerNode              *handlerNode
 	currentHandlerOrTransformerIndex int
 	currentHandlerOrTransformer      any
+
+	deadline   *time.Time
+	doneChan   chan struct{}
+	finalError error
 }
 
 var contextData = make(map[*Context]map[string]any)
@@ -66,6 +71,10 @@ func NewContext(responseWriter http.ResponseWriter, request *http.Request, first
 			handlersAndTransformers: []any{},
 			next:                    firstHandlerNode,
 		},
+
+		deadline:   nil,
+		doneChan:   make(chan struct{}),
+		finalError: nil,
 	}
 }
 
@@ -96,6 +105,12 @@ func (c *Context) Next() {
 	defer c.tryUpdateParent()
 
 	if c.Error != nil {
+		return
+	}
+
+	// If we have exceeded the deadline, we can return early.
+	if c.deadline != nil && time.Now().After(*c.deadline) {
+		c.Error = errors.New("request exceeded timeout deadline")
 		return
 	}
 
@@ -268,6 +283,33 @@ func (c *Context) SetRequestBodyBytes(body []byte) {
 	c.requestBodyBytes = body
 }
 
+// Deadline returns the deadline of the request.
+func (c Context) Deadline() (time.Time, bool) {
+	ok := c.deadline != nil
+	deadline := time.Time{}
+	if ok {
+		deadline = *c.deadline
+	}
+	return deadline, ok
+}
+
+// Returns a channel that returns an empty struct when the request is done.
+func (c Context) Done() <-chan struct{} {
+	return c.doneChan
+}
+
+// Err returns the final error of the request. Will be nil if the request
+// is still being served even if an error has occurred. Populated once the
+// request is done.
+func (c Context) Err() error {
+	return c.finalError
+}
+
+// Value is a noop for compatibility with go's context.Context.
+func (c Context) Value(key any) any {
+	return nil
+}
+
 // CtxSet associates a value by it's type with a context. This is for handlers
 // and middleware to share data with other handlers and middleware associated
 // with the context.
@@ -371,6 +413,11 @@ func (c *Context) tryMatchHandlerNode(node *handlerNode) bool {
 	}
 
 	return true
+}
+
+func (c *Context) markDone() {
+	c.finalError = c.Error
+	c.doneChan <- struct{}{}
 }
 
 func execWithCtxRecovery(ctx *Context, fn func()) {

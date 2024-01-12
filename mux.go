@@ -74,6 +74,7 @@ func (m *Mux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx.clearContextData()
+	ctx.markDone()
 }
 
 func (m *Mux) Handle(ctx *Context) {
