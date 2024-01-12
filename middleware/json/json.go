@@ -47,6 +47,7 @@ func unmarshalRequestBody(ctx *navaros.Context) {
 }
 
 func marshalResponseBody(ctx *navaros.Context) {
+	ctx.Headers["Content-Type"] = "application/json"
 	ctx.SetResponseBodyMarshaller(func(from any) ([]byte, error) {
 		return json.Marshal(from)
 	})
