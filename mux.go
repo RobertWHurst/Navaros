@@ -19,9 +19,7 @@ func New() *Mux {
 func (m *Mux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ctx := NewContext(w, r, m.firstHandlerNode)
 
-	println(1)
 	ctx.Next()
-	println(2)
 
 	if ctx.Error != nil {
 		ctx.Status = 500
@@ -29,7 +27,6 @@ func (m *Mux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			fmt.Printf("Error occurred when handling request: %s\n%s", ctx.Error, ctx.ErrorStack)
 		}
 	}
-	println(3)
 
 	finalBody := make([]byte, 0)
 	if !ctx.hasWrittenBody && ctx.Body != nil {
@@ -48,7 +45,6 @@ func (m *Mux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	println(4)
 
 	if ctx.Status == 0 {
 		if len(finalBody) == 0 {
@@ -57,7 +53,6 @@ func (m *Mux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			ctx.Status = 200
 		}
 	}
-	println(5)
 
 	if !ctx.hasWrittenHeaders {
 		for key, value := range ctx.Headers {
@@ -65,7 +60,6 @@ func (m *Mux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		ctx.bodyWriter.WriteHeader(ctx.Status)
 	}
-	println(6)
 
 	hasBody := len(finalBody) != 0
 	is100Range := ctx.Status >= 100 && ctx.Status < 200
@@ -78,11 +72,9 @@ func (m *Mux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			fmt.Printf("Error occurred when writing response: %s", err)
 		}
 	}
-	println(7)
 
 	ctx.clearContextData()
 	ctx.markDone()
-	println(8)
 }
 
 func (m *Mux) Handle(ctx *Context) {
