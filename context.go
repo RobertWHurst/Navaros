@@ -44,9 +44,9 @@ type Context struct {
 	currentHandlerOrTransformerIndex int
 	currentHandlerOrTransformer      any
 
-	deadline   *time.Time
-	doneChan   chan struct{}
-	finalError error
+	deadline     *time.Time
+	doneHandlers []func()
+	finalError   error
 }
 
 var contextData = make(map[*Context]map[string]any)
@@ -72,9 +72,9 @@ func NewContext(responseWriter http.ResponseWriter, request *http.Request, first
 			next:                    firstHandlerNode,
 		},
 
-		deadline:   nil,
-		doneChan:   make(chan struct{}),
-		finalError: nil,
+		deadline:     nil,
+		doneHandlers: []func(){},
+		finalError:   nil,
 	}
 }
 
@@ -295,7 +295,11 @@ func (c Context) Deadline() (time.Time, bool) {
 
 // Returns a channel that returns an empty struct when the request is done.
 func (c Context) Done() <-chan struct{} {
-	return c.doneChan
+	doneChan := make(chan struct{})
+	c.doneHandlers = append(c.doneHandlers, func() {
+		doneChan <- struct{}{}
+	})
+	return doneChan
 }
 
 // Err returns the final error of the request. Will be nil if the request
@@ -417,7 +421,9 @@ func (c *Context) tryMatchHandlerNode(node *handlerNode) bool {
 
 func (c *Context) markDone() {
 	c.finalError = c.Error
-	c.doneChan <- struct{}{}
+	for _, doneHandler := range c.doneHandlers {
+		doneHandler()
+	}
 }
 
 func execWithCtxRecovery(ctx *Context, fn func()) {
