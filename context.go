@@ -284,7 +284,7 @@ func (c *Context) SetRequestBodyBytes(body []byte) {
 }
 
 // Deadline returns the deadline of the request.
-func (c Context) Deadline() (time.Time, bool) {
+func (c *Context) Deadline() (time.Time, bool) {
 	ok := c.deadline != nil
 	deadline := time.Time{}
 	if ok {
@@ -294,7 +294,7 @@ func (c Context) Deadline() (time.Time, bool) {
 }
 
 // Returns a channel that returns an empty struct when the request is done.
-func (c Context) Done() <-chan struct{} {
+func (c *Context) Done() <-chan struct{} {
 	doneChan := make(chan struct{})
 	c.doneHandlers = append(c.doneHandlers, func() {
 		doneChan <- struct{}{}
@@ -305,12 +305,12 @@ func (c Context) Done() <-chan struct{} {
 // Err returns the final error of the request. Will be nil if the request
 // is still being served even if an error has occurred. Populated once the
 // request is done.
-func (c Context) Err() error {
+func (c *Context) Err() error {
 	return c.finalError
 }
 
 // Value is a noop for compatibility with go's context.Context.
-func (c Context) Value(key any) any {
+func (c *Context) Value(key any) any {
 	return nil
 }
 

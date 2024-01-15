@@ -3,6 +3,7 @@ package navaros
 import (
 	"fmt"
 	"net/http"
+	"reflect"
 )
 
 var PrintHandlerErrors = false
@@ -123,6 +124,24 @@ func (m *Mux) bind(method HttpVerb, path string, handlersAndTransformers ...any)
 	pattern, err := NewPattern(path)
 	if err != nil {
 		panic(err)
+	}
+
+	for _, handlerOrTransformer := range handlersAndTransformers {
+		if _, ok := handlerOrTransformer.(Transformer); ok {
+			continue
+		}
+		if _, ok := handlerOrTransformer.(*Mux); ok {
+			continue
+		}
+		if _, ok := handlerOrTransformer.(HandlerFunc); ok {
+			continue
+		}
+		if _, ok := handlerOrTransformer.(func(*Context)); ok {
+			continue
+		}
+
+		handlerOrTransformerRefType := reflect.TypeOf(handlerOrTransformer)
+		panic(fmt.Errorf("invalid handler or transformer type: %s", handlerOrTransformerRefType.String()))
 	}
 
 	nextHandlerNode := handlerNode{
