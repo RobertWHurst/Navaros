@@ -40,6 +40,10 @@ func (p *Pattern) Match(path string) (map[string]string, bool) {
 	return params, true
 }
 
+func (p *Pattern) String() string {
+	return p.str
+}
+
 type chunkKind int
 
 const (
