@@ -44,9 +44,11 @@ type Context struct {
 	currentHandlerOrTransformerIndex int
 	currentHandlerOrTransformer      any
 
-	deadline     *time.Time
-	doneHandlers []func()
-	finalError   error
+	deadline              *time.Time
+	untilFinishedHandlers []func()
+
+	finalNext  func()
+	finalError error
 }
 
 var contextData = make(map[*Context]map[string]any)
@@ -72,16 +74,16 @@ func NewContext(responseWriter http.ResponseWriter, request *http.Request, first
 			next:                    firstHandlerNode,
 		},
 
-		deadline:     nil,
-		doneHandlers: []func(){},
-		finalError:   nil,
+		deadline:              nil,
+		untilFinishedHandlers: []func(){},
+		finalError:            nil,
 	}
 }
 
 // NewSubContext creates a new Context from an existing Context. This is useful
 // when you want to create a new Context from an existing one, but with a
 // different handler chain.
-func NewSubContext(ctx *Context, firstHandlerNode *handlerNode) *Context {
+func NewSubContext(ctx *Context, firstHandlerNode *handlerNode, finalNext func()) *Context {
 	subContext := *ctx
 	subContext.parentContext = ctx
 	subContext.currentHandlerNode = &handlerNode{
@@ -93,6 +95,7 @@ func NewSubContext(ctx *Context, firstHandlerNode *handlerNode) *Context {
 	subContext.matchingHandlerNode = nil
 	subContext.currentHandlerOrTransformerIndex = 0
 	subContext.currentHandlerOrTransformer = nil
+	subContext.finalNext = finalNext
 	return &subContext
 }
 
@@ -157,8 +160,12 @@ func (c *Context) Next() {
 		c.currentHandlerOrTransformer = nil
 	}
 
-	// If we didn't find a handler function or transformer, we can return early.
+	// If we didn't find a handler function or transformer, check for a final next
+	// function, execute it, and return.
 	if c.currentHandlerOrTransformer == nil {
+		if c.finalNext != nil {
+			c.finalNext()
+		}
 		return
 	}
 
@@ -293,10 +300,11 @@ func (c *Context) Deadline() (time.Time, bool) {
 	return deadline, ok
 }
 
-// Returns a channel that returns an empty struct when the request is done.
-func (c *Context) Done() <-chan struct{} {
+// UntilFinish returns a channel that returns an empty struct once the request
+// has been processed and the response has been sent.
+func (c *Context) UntilFinish() <-chan struct{} {
 	doneChan := make(chan struct{})
-	c.doneHandlers = append(c.doneHandlers, func() {
+	c.untilFinishedHandlers = append(c.untilFinishedHandlers, func() {
 		doneChan <- struct{}{}
 	})
 	return doneChan
@@ -421,7 +429,7 @@ func (c *Context) tryMatchHandlerNode(node *handlerNode) bool {
 
 func (c *Context) markDone() {
 	c.finalError = c.Error
-	for _, doneHandler := range c.doneHandlers {
+	for _, doneHandler := range c.untilFinishedHandlers {
 		doneHandler()
 	}
 }

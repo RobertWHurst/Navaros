@@ -79,9 +79,10 @@ func (m *Mux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *Mux) Handle(ctx *Context) {
-	subCtx := NewSubContext(ctx, m.firstHandlerNode)
+	subCtx := NewSubContext(ctx, m.firstHandlerNode, func() {
+		ctx.Next()
+	})
 	subCtx.Next()
-	ctx.Next()
 }
 
 func (m *Mux) Use(handlersAndTransformers ...any) {
