@@ -310,6 +310,12 @@ func (c *Context) UntilFinish() <-chan struct{} {
 	return doneChan
 }
 
+// Done added for compatibility with go's context.Context. Alias for
+// UntilFinish().
+func (c *Context) Done() <-chan struct{} {
+	return c.UntilFinish()
+}
+
 // Err returns the final error of the request. Will be nil if the request
 // is still being served even if an error has occurred. Populated once the
 // request is done.
