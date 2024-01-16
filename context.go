@@ -103,9 +103,16 @@ func NewSubContext(ctx *Context, firstHandlerNode *handlerNode, finalNext func()
 // middleware style handlers that work on the context before and/or after the
 // responding handler.
 func (c *Context) Next() {
+	shouldRunFinalNext := false
+
 	// In the case that this is a sub context, we need to update the parent
 	// context with the current context's state.
-	defer c.tryUpdateParent()
+	defer func() {
+		c.tryUpdateParent()
+		if shouldRunFinalNext {
+			c.finalNext()
+		}
+	}()
 
 	if c.Error != nil {
 		return
@@ -137,6 +144,7 @@ func (c *Context) Next() {
 				c.currentHandlerNode = c.currentHandlerNode.next
 			}
 			if c.matchingHandlerNode == nil {
+				shouldRunFinalNext = true
 				return
 			}
 		}
@@ -163,9 +171,7 @@ func (c *Context) Next() {
 	// If we didn't find a handler function or transformer, check for a final next
 	// function, execute it, and return.
 	if c.currentHandlerOrTransformer == nil {
-		if c.finalNext != nil {
-			c.finalNext()
-		}
+		shouldRunFinalNext = true
 		return
 	}
 
@@ -177,9 +183,9 @@ func (c *Context) Next() {
 			c.Next()
 			currentTransformer.TransformResponse(c)
 		})
-	} else if currentMux, ok := c.currentHandlerOrTransformer.(Handler); ok {
+	} else if currentHandler, ok := c.currentHandlerOrTransformer.(Handler); ok {
 		execWithCtxRecovery(c, func() {
-			currentMux.Handle(c)
+			currentHandler.Handle(c)
 		})
 	} else if currentHandler, ok := c.currentHandlerOrTransformer.(HandlerFunc); ok {
 		execWithCtxRecovery(c, func() {
