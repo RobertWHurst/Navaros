@@ -177,7 +177,7 @@ func (c *Context) Next() {
 			c.Next()
 			currentTransformer.TransformResponse(c)
 		})
-	} else if currentMux, ok := c.currentHandlerOrTransformer.(*Mux); ok {
+	} else if currentMux, ok := c.currentHandlerOrTransformer.(Handler); ok {
 		execWithCtxRecovery(c, func() {
 			currentMux.Handle(c)
 		})

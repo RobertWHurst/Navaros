@@ -78,6 +78,9 @@ func (m *Mux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ctx.markDone()
 }
 
+// Handle is for the purpose of taking an existing context, and running it
+// through the mux's handler chain. If the last handler calls next, it
+// will call next on the original context.
 func (m *Mux) Handle(ctx *Context) {
 	subCtx := NewSubContext(ctx, m.firstHandlerNode, func() {
 		ctx.Next()
@@ -130,14 +133,11 @@ func (m *Mux) bind(method HttpVerb, path string, handlersAndTransformers ...any)
 	for _, handlerOrTransformer := range handlersAndTransformers {
 		if _, ok := handlerOrTransformer.(Transformer); ok {
 			continue
-		}
-		if _, ok := handlerOrTransformer.(*Mux); ok {
+		} else if _, ok := handlerOrTransformer.(Handler); ok {
 			continue
-		}
-		if _, ok := handlerOrTransformer.(HandlerFunc); ok {
+		} else if _, ok := handlerOrTransformer.(HandlerFunc); ok {
 			continue
-		}
-		if _, ok := handlerOrTransformer.(func(*Context)); ok {
+		} else if _, ok := handlerOrTransformer.(func(*Context)); ok {
 			continue
 		}
 
