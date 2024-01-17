@@ -33,8 +33,12 @@ type Context struct {
 	hasWrittenHeaders bool
 	hasWrittenBody    bool
 
-	Error      error
-	ErrorStack string
+	Error           error
+	ErrorStack      string
+	FinalError      error
+	FinalErrorStack string
+
+	FinalNext func()
 
 	requestBodyUnmarshaller func(into any) error
 	responseBodyMarshaller  func(from any) ([]byte, error)
@@ -44,11 +48,8 @@ type Context struct {
 	currentHandlerOrTransformerIndex int
 	currentHandlerOrTransformer      any
 
-	deadline              *time.Time
-	untilFinishedHandlers []func()
-
-	finalNext  func()
-	finalError error
+	deadline     *time.Time
+	doneHandlers []func()
 }
 
 var contextData = make(map[*Context]map[string]any)
@@ -74,9 +75,7 @@ func NewContext(responseWriter http.ResponseWriter, request *http.Request, first
 			next:                    firstHandlerNode,
 		},
 
-		deadline:              nil,
-		untilFinishedHandlers: []func(){},
-		finalError:            nil,
+		doneHandlers: []func(){},
 	}
 }
 
@@ -95,7 +94,7 @@ func NewSubContext(ctx *Context, firstHandlerNode *handlerNode, finalNext func()
 	subContext.matchingHandlerNode = nil
 	subContext.currentHandlerOrTransformerIndex = 0
 	subContext.currentHandlerOrTransformer = nil
-	subContext.finalNext = finalNext
+	subContext.FinalNext = finalNext
 	return &subContext
 }
 
@@ -110,7 +109,7 @@ func (c *Context) Next() {
 	defer func() {
 		c.tryUpdateParent()
 		if shouldRunFinalNext {
-			c.finalNext()
+			c.FinalNext()
 		}
 	}()
 
@@ -306,27 +305,21 @@ func (c *Context) Deadline() (time.Time, bool) {
 	return deadline, ok
 }
 
-// UntilFinish returns a channel that returns an empty struct once the request
-// has been processed and the response has been sent.
-func (c *Context) UntilFinish() <-chan struct{} {
-	doneChan := make(chan struct{})
-	c.untilFinishedHandlers = append(c.untilFinishedHandlers, func() {
-		doneChan <- struct{}{}
-	})
-	return doneChan
-}
-
 // Done added for compatibility with go's context.Context. Alias for
 // UntilFinish().
 func (c *Context) Done() <-chan struct{} {
-	return c.UntilFinish()
+	doneChan := make(chan struct{})
+	c.doneHandlers = append(c.doneHandlers, func() {
+		doneChan <- struct{}{}
+	})
+	return doneChan
 }
 
 // Err returns the final error of the request. Will be nil if the request
 // is still being served even if an error has occurred. Populated once the
 // request is done.
 func (c *Context) Err() error {
-	return c.finalError
+	return c.FinalError
 }
 
 // Value is a noop for compatibility with go's context.Context.
@@ -440,8 +433,9 @@ func (c *Context) tryMatchHandlerNode(node *handlerNode) bool {
 }
 
 func (c *Context) markDone() {
-	c.finalError = c.Error
-	for _, doneHandler := range c.untilFinishedHandlers {
+	c.FinalError = c.Error
+	c.FinalErrorStack = c.ErrorStack
+	for _, doneHandler := range c.doneHandlers {
 		doneHandler()
 	}
 }
