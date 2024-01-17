@@ -6,7 +6,7 @@ type Transformer interface {
 }
 
 type handlerNode struct {
-	method                  HttpVerb
+	method                  HTTPMethod
 	pattern                 *Pattern
 	handlersAndTransformers []any
 	next                    *handlerNode
@@ -15,5 +15,10 @@ type handlerNode struct {
 type HandlerFunc func(ctx *Context)
 
 type Handler interface {
+	Handle(ctx *Context)
+}
+
+type RouterHandler interface {
+	RouteDescriptors() []*RouteDescriptor
 	Handle(ctx *Context)
 }

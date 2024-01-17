@@ -17,7 +17,7 @@ import (
 type Context struct {
 	parentContext *Context
 
-	method            HttpVerb
+	method            HTTPMethod
 	path              string
 	url               *url.URL
 	params            RequestParams
@@ -58,7 +58,7 @@ var contextData = make(map[*Context]map[string]any)
 // chain.
 func NewContext(responseWriter http.ResponseWriter, request *http.Request, firstHandlerNode *handlerNode) *Context {
 	return &Context{
-		method:            HttpVerb(request.Method),
+		method:            HTTPMethod(request.Method),
 		path:              request.URL.Path,
 		url:               request.URL,
 		query:             request.URL.Query(),
@@ -201,7 +201,7 @@ func (c *Context) Next() {
 }
 
 // Method returns the HTTP method of the request.
-func (c *Context) Method() HttpVerb {
+func (c *Context) Method() HTTPMethod {
 	return c.method
 }
 

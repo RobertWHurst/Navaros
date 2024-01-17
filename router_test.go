@@ -9,15 +9,15 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestNewNavaros(t *testing.T) {
-	navaros.New()
+func TestNewRouter(t *testing.T) {
+	navaros.NewRouter()
 }
 
-func TestNavarosGetSimpleHandler(t *testing.T) {
+func TestRouterGetSimpleHandler(t *testing.T) {
 	r := httptest.NewRequest("GET", "/a/b/c", nil)
 	w := httptest.NewRecorder()
 
-	m := navaros.New()
+	m := navaros.NewRouter()
 	m.Get("/a/b/c", func(ctx *navaros.Context) {
 		ctx.Status = 201
 		ctx.Body = "Hello World"
@@ -29,14 +29,14 @@ func TestNavarosGetSimpleHandler(t *testing.T) {
 	assert.Equal(t, "Hello World", w.Body.String())
 }
 
-func TestNavarosGetMiddlewareAndHandler(t *testing.T) {
+func TestRouterGetMiddlewareAndHandler(t *testing.T) {
 	r := httptest.NewRequest("GET", "/a/b/c", nil)
 	w := httptest.NewRecorder()
 
 	type myStr1 string
 	type myStr2 string
 
-	m := navaros.New()
+	m := navaros.NewRouter()
 	m.Get("/a/b/c", func(ctx *navaros.Context) {
 		navaros.CtxSet(ctx, myStr1("Hello"))
 		navaros.CtxSet(ctx, myStr2("World"))
@@ -55,14 +55,14 @@ func TestNavarosGetMiddlewareAndHandler(t *testing.T) {
 	assert.Equal(t, "Hello World", w.Body.String())
 }
 
-func TestNavarosGetMiddlewareAndHandlerInline(t *testing.T) {
+func TestRouterGetMiddlewareAndHandlerInline(t *testing.T) {
 	r := httptest.NewRequest("GET", "/a/b/c", nil)
 	w := httptest.NewRecorder()
 
 	type myStr1 string
 	type myStr2 string
 
-	m := navaros.New()
+	m := navaros.NewRouter()
 	m.Get("/a/b/c", func(ctx *navaros.Context) {
 		navaros.CtxSet(ctx, myStr1("Hello"))
 		navaros.CtxSet(ctx, myStr2("World"))
@@ -80,13 +80,13 @@ func TestNavarosGetMiddlewareAndHandlerInline(t *testing.T) {
 	assert.Equal(t, "Hello World", w.Body.String())
 }
 
-func TestNavarosGetErroredHandler(t *testing.T) {
+func TestRouterGetErroredHandler(t *testing.T) {
 	r := httptest.NewRequest("GET", "/a/b/c", nil)
 	w := httptest.NewRecorder()
 
 	calledHandler := false
 
-	m := navaros.New()
+	m := navaros.NewRouter()
 	m.Get("/a/b/c", func(ctx *navaros.Context) {
 		ctx.Error = errors.New("Hello World")
 		ctx.Next()
@@ -101,13 +101,13 @@ func TestNavarosGetErroredHandler(t *testing.T) {
 	assert.False(t, calledHandler)
 }
 
-func TestNavarosGetPanickedHandler(t *testing.T) {
+func TestRouterGetPanickedHandler(t *testing.T) {
 	r := httptest.NewRequest("GET", "/a/b/c", nil)
 	w := httptest.NewRecorder()
 
 	calledHandler := false
 
-	m := navaros.New()
+	m := navaros.NewRouter()
 	m.Get("/a/b/c", func(ctx *navaros.Context) {
 		panic("Hello World")
 	})
@@ -121,7 +121,7 @@ func TestNavarosGetPanickedHandler(t *testing.T) {
 	assert.False(t, calledHandler)
 }
 
-func TestNavarosGetSubNavaros(t *testing.T) {
+func TestRouterGetSubRouter(t *testing.T) {
 	r := httptest.NewRequest("GET", "/a/b/c", nil)
 	w := httptest.NewRecorder()
 
@@ -129,13 +129,13 @@ func TestNavarosGetSubNavaros(t *testing.T) {
 	calledSecondHandler := false
 	calledThirdHandler := false
 
-	m2 := navaros.New()
+	m2 := navaros.NewRouter()
 	m2.Get("/a/b/c", func(ctx *navaros.Context) {
 		calledSecondHandler = true
 		ctx.Next()
 	})
 
-	m1 := navaros.New()
+	m1 := navaros.NewRouter()
 	m1.Get("/a/b/c", func(ctx *navaros.Context) {
 		calledFirstHandler = true
 		ctx.Next()
@@ -151,4 +151,50 @@ func TestNavarosGetSubNavaros(t *testing.T) {
 	assert.True(t, calledFirstHandler)
 	assert.True(t, calledSecondHandler)
 	assert.True(t, calledThirdHandler)
+}
+
+func TestRouterGetRouteDescriptors(t *testing.T) {
+	m := navaros.NewRouter()
+	m.Get("/a/b/c", func(ctx *navaros.Context) {})
+	m.Get("/a/b/c", func(ctx *navaros.Context) {})
+	m.Post("/e/:f/*", func(ctx *navaros.Context) {})
+
+	descriptors := m.RouteDescriptors()
+
+	assert.Len(t, descriptors, 2)
+	assert.Equal(t, navaros.Get, descriptors[0].Method)
+	assert.Equal(t, "/a/b/c", descriptors[0].Pattern.String())
+	assert.Equal(t, navaros.Post, descriptors[1].Method)
+	assert.Equal(t, "/e/:f/*", descriptors[1].Pattern.String())
+}
+
+func TestRouterGetRouteDescriptorsWithSubRouter(t *testing.T) {
+	m3 := navaros.NewRouter()
+	m3.Get("/a/b/c", func(ctx *navaros.Context) {})
+	m3.Post("/a/b/c", func(ctx *navaros.Context) {})
+
+	m2 := navaros.NewRouter()
+	m2.Get("/a/b/c", func(ctx *navaros.Context) {})  //x
+	m2.Post("/a/b/c", func(ctx *navaros.Context) {}) //x
+
+	m1 := navaros.NewRouter()
+	m1.Get("/a/b/c", func(ctx *navaros.Context) {})  //x
+	m2.Post("/a/b/c", func(ctx *navaros.Context) {}) //x
+
+	m1.Use(m2)
+	m1.Use("/a/b/c", m3)
+
+	descriptors := m1.RouteDescriptors()
+
+	assert.Len(t, descriptors, 4)
+
+	assert.Equal(t, navaros.Get, descriptors[0].Method)
+	assert.Equal(t, "/a/b/c", descriptors[0].Pattern.String())
+	assert.Equal(t, navaros.Post, descriptors[1].Method)
+	assert.Equal(t, "/a/b/c", descriptors[1].Pattern.String())
+
+	assert.Equal(t, navaros.Get, descriptors[2].Method)
+	assert.Equal(t, "/a/b/c/a/b/c", descriptors[2].Pattern.String())
+	assert.Equal(t, navaros.Post, descriptors[3].Method)
+	assert.Equal(t, "/a/b/c/a/b/c", descriptors[3].Pattern.String())
 }
