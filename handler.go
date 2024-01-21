@@ -5,11 +5,11 @@ type Transformer interface {
 	TransformResponse(ctx *Context)
 }
 
-type handlerNode struct {
-	method                  HTTPMethod
-	pattern                 *Pattern
-	handlersAndTransformers []any
-	next                    *handlerNode
+type HandlerNode struct {
+	Method                  HTTPMethod
+	Pattern                 *Pattern
+	HandlersAndTransformers []any
+	Next                    *HandlerNode
 }
 
 type HandlerFunc func(ctx *Context)

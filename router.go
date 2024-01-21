@@ -12,76 +12,18 @@ var PrintHandlerErrors = false
 type Router struct {
 	routeDescriptorMap map[HTTPMethod]map[string]bool
 	routeDescriptors   []*RouteDescriptor
-	firstHandlerNode   *handlerNode
-	lastHandlerNode    *handlerNode
+	firstHandlerNode   *HandlerNode
+	lastHandlerNode    *HandlerNode
 }
 
 func NewRouter() *Router {
-	return &Router{
-		routeDescriptorMap: map[HTTPMethod]map[string]bool{},
-		routeDescriptors:   []*RouteDescriptor{},
-	}
+	return &Router{}
 }
 
-func (r *Router) ServeHTTP(wtr http.ResponseWriter, req *http.Request) {
-	ctx := NewContext(wtr, req, r.firstHandlerNode)
-
+func (r *Router) ServeHTTP(res http.ResponseWriter, req *http.Request) {
+	ctx := NewContext(res, req, r.firstHandlerNode)
 	ctx.Next()
-
-	if ctx.Error != nil {
-		ctx.Status = 500
-		if PrintHandlerErrors {
-			fmt.Printf("Error occurred when handling request: %s\n%s", ctx.Error, ctx.ErrorStack)
-		}
-	}
-
-	finalBody := make([]byte, 0)
-	if !ctx.hasWrittenBody && ctx.Body != nil {
-		switch body := ctx.Body.(type) {
-		case string:
-			finalBody = []byte(body)
-		case []byte:
-			finalBody = body
-		default:
-			marshalledBytes, err := ctx.marshallResponseBody()
-			if err != nil {
-				ctx.Status = 500
-				fmt.Printf("Error occurred when marshalling response body: %s", err)
-			} else {
-				finalBody = marshalledBytes
-			}
-		}
-	}
-
-	if ctx.Status == 0 {
-		if len(finalBody) == 0 {
-			ctx.Status = 404
-		} else {
-			ctx.Status = 200
-		}
-	}
-
-	if !ctx.hasWrittenHeaders {
-		for key, value := range ctx.Headers {
-			ctx.bodyWriter.Header().Set(key, value)
-		}
-		ctx.bodyWriter.WriteHeader(ctx.Status)
-	}
-
-	hasBody := len(finalBody) != 0
-	is100Range := ctx.Status >= 100 && ctx.Status < 200
-	is204Or304 := ctx.Status == 204 || ctx.Status == 304
-
-	if hasBody {
-		if is100Range || is204Or304 {
-			fmt.Printf("Response with status %d has body but no content is expected", ctx.Status)
-		} else if _, err := ctx.bodyWriter.Write(finalBody); err != nil {
-			fmt.Printf("Error occurred when writing response: %s", err)
-		}
-	}
-
-	ctx.clearContextData()
-	ctx.markDone()
+	ctx.finalize()
 }
 
 // Handle is for the purpose of taking an existing context, and running it
@@ -112,42 +54,74 @@ func (r *Router) Use(handlersAndTransformers ...any) {
 			handlersAndTransformers = handlersAndTransformers[1:]
 		}
 	}
-	r.bind(All, mountPath, handlersAndTransformers...)
+	r.bind(false, All, mountPath, handlersAndTransformers...)
+}
+
+func (r *Router) PublicAll(path string, handlersAndTransformers ...any) {
+	r.bind(true, All, path, handlersAndTransformers...)
+}
+
+func (r *Router) PublicPost(path string, handlersAndTransformers ...any) {
+	r.bind(true, Post, path, handlersAndTransformers...)
+}
+
+func (r *Router) PublicGet(path string, handlersAndTransformers ...any) {
+	r.bind(true, Get, path, handlersAndTransformers...)
+}
+
+func (r *Router) PublicPut(path string, handlersAndTransformers ...any) {
+	r.bind(true, Put, path, handlersAndTransformers...)
+}
+
+func (r *Router) PublicPatch(path string, handlersAndTransformers ...any) {
+	r.bind(true, Patch, path, handlersAndTransformers...)
+}
+
+func (r *Router) PublicDelete(path string, handlersAndTransformers ...any) {
+	r.bind(true, Delete, path, handlersAndTransformers...)
+}
+
+func (r *Router) PublicOptions(path string, handlersAndTransformers ...any) {
+	r.bind(true, Options, path, handlersAndTransformers...)
+}
+
+func (r *Router) PublicHead(path string, handlersAndTransformers ...any) {
+	r.bind(true, Head, path, handlersAndTransformers...)
 }
 
 func (r *Router) All(path string, handlersAndTransformers ...any) {
-	r.bind(All, path, handlersAndTransformers...)
+	r.bind(false, All, path, handlersAndTransformers...)
 }
 
 func (r *Router) Post(path string, handlersAndTransformers ...any) {
-	r.bind(Post, path, handlersAndTransformers...)
+	r.bind(false, Post, path, handlersAndTransformers...)
 }
 
 func (r *Router) Get(path string, handlersAndTransformers ...any) {
-	r.bind(Get, path, handlersAndTransformers...)
+	r.bind(false, Get, path, handlersAndTransformers...)
 }
 
 func (r *Router) Put(path string, handlersAndTransformers ...any) {
-	r.bind(Put, path, handlersAndTransformers...)
+	r.bind(false, Put, path, handlersAndTransformers...)
 }
 
 func (r *Router) Patch(path string, handlersAndTransformers ...any) {
-	r.bind(Patch, path, handlersAndTransformers...)
+	r.bind(false, Patch, path, handlersAndTransformers...)
 }
 
 func (r *Router) Delete(path string, handlersAndTransformers ...any) {
-	r.bind(Delete, path, handlersAndTransformers...)
+	r.bind(false, Delete, path, handlersAndTransformers...)
 }
 
 func (r *Router) Options(path string, handlersAndTransformers ...any) {
-	r.bind(Options, path, handlersAndTransformers...)
+	r.bind(false, Options, path, handlersAndTransformers...)
 }
 
 func (r *Router) Head(path string, handlersAndTransformers ...any) {
-	r.bind(Head, path, handlersAndTransformers...)
+	r.bind(false, Head, path, handlersAndTransformers...)
 }
 
-func (r *Router) bind(method HTTPMethod, path string, handlersAndTransformers ...any) {
+func (r *Router) bind(isPublic bool, method HTTPMethod, path string, handlersAndTransformers ...any) {
 	if len(handlersAndTransformers) == 0 {
 		panic("no handlers or transformers provided")
 	}
@@ -172,40 +146,48 @@ func (r *Router) bind(method HTTPMethod, path string, handlersAndTransformers ..
 		panic(fmt.Errorf("invalid handler or transformer type: %s", handlerOrTransformerRefType.String()))
 	}
 
-	hasAddedOwnRouteDescriptor := false
-	for _, handlerOrTransformer := range handlersAndTransformers {
-		if routerHandler, ok := handlerOrTransformer.(RouterHandler); ok {
-			for _, routeDescriptor := range routerHandler.RouteDescriptors() {
-				mountPath := strings.TrimSuffix(path, "/**")
-				subPattern, err := NewPattern(mountPath + routeDescriptor.Pattern.String())
-				if err != nil {
-					panic(err)
+	if isPublic {
+		hasAddedOwnRouteDescriptor := false
+		for _, handlerOrTransformer := range handlersAndTransformers {
+			if routerHandler, ok := handlerOrTransformer.(RouterHandler); ok {
+				for _, routeDescriptor := range routerHandler.RouteDescriptors() {
+					mountPath := strings.TrimSuffix(path, "/**")
+					subPattern, err := NewPattern(mountPath + routeDescriptor.Pattern.String())
+					if err != nil {
+						panic(err)
+					}
+					r.addRouteDescriptor(routeDescriptor.Method, subPattern)
 				}
-				r.addRouteDescriptor(routeDescriptor.Method, subPattern)
+			} else if !hasAddedOwnRouteDescriptor {
+				r.addRouteDescriptor(method, pattern)
+				hasAddedOwnRouteDescriptor = true
 			}
-		} else if !hasAddedOwnRouteDescriptor {
-			r.addRouteDescriptor(method, pattern)
-			hasAddedOwnRouteDescriptor = true
 		}
 	}
 
-	nextHandlerNode := handlerNode{
-		method:                  method,
-		pattern:                 pattern,
-		handlersAndTransformers: handlersAndTransformers,
+	nextHandlerNode := &HandlerNode{
+		Method:                  method,
+		Pattern:                 pattern,
+		HandlersAndTransformers: handlersAndTransformers,
 	}
 
 	if r.firstHandlerNode == nil {
-		r.firstHandlerNode = &nextHandlerNode
-		r.lastHandlerNode = &nextHandlerNode
+		r.firstHandlerNode = nextHandlerNode
+		r.lastHandlerNode = nextHandlerNode
 	} else {
-		r.lastHandlerNode.next = &nextHandlerNode
-		r.lastHandlerNode = &nextHandlerNode
+		r.lastHandlerNode.Next = nextHandlerNode
+		r.lastHandlerNode = nextHandlerNode
 	}
 }
 
 func (r *Router) addRouteDescriptor(method HTTPMethod, pattern *Pattern) {
 	path := pattern.String()
+	if r.routeDescriptorMap == nil {
+		r.routeDescriptorMap = map[HTTPMethod]map[string]bool{}
+	}
+	if r.routeDescriptors == nil {
+		r.routeDescriptors = []*RouteDescriptor{}
+	}
 	if _, ok := r.routeDescriptorMap[method]; !ok {
 		r.routeDescriptorMap[method] = map[string]bool{}
 	}

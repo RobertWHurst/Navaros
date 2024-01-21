@@ -1,6 +1,7 @@
 package navaros
 
 import (
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
@@ -17,14 +18,12 @@ import (
 type Context struct {
 	parentContext *Context
 
-	method            HTTPMethod
-	path              string
-	url               *url.URL
-	params            RequestParams
-	query             url.Values
-	requestHeaders    RequestHeaders
-	requestBodyReader io.ReadCloser
-	requestBodyBytes  []byte
+	request *http.Request
+
+	method           HTTPMethod
+	path             string
+	params           RequestParams
+	requestBodyBytes []byte
 
 	Status            int
 	Headers           ResponseHeaders
@@ -43,8 +42,8 @@ type Context struct {
 	requestBodyUnmarshaller func(into any) error
 	responseBodyMarshaller  func(from any) ([]byte, error)
 
-	currentHandlerNode               *handlerNode
-	matchingHandlerNode              *handlerNode
+	currentHandlerNode               *HandlerNode
+	matchingHandlerNode              *HandlerNode
 	currentHandlerOrTransformerIndex int
 	currentHandlerOrTransformer      any
 
@@ -57,39 +56,44 @@ var contextData = make(map[*Context]map[string]any)
 // NewContext creates a new Context from go's http.ResponseWriter and
 // http.Request. It also takes a handler node - the start of the handler
 // chain.
-func NewContext(responseWriter http.ResponseWriter, request *http.Request, firstHandlerNode *handlerNode) *Context {
+func NewContext(res http.ResponseWriter, req *http.Request, firstHandlerNode *HandlerNode) *Context {
 	return &Context{
-		method:            HTTPMethod(request.Method),
-		path:              request.URL.Path,
-		url:               request.URL,
-		query:             request.URL.Query(),
-		requestHeaders:    RequestHeaders(request.Header),
-		requestBodyReader: request.Body,
+		request: req,
+
+		method: HTTPMethod(req.Method),
+		path:   req.URL.Path,
 
 		Headers:    map[string]string{},
-		bodyWriter: responseWriter,
+		bodyWriter: res,
 
-		currentHandlerNode: &handlerNode{
-			method:                  All,
-			handlersAndTransformers: []any{},
-			next:                    firstHandlerNode,
+		currentHandlerNode: &HandlerNode{
+			Method:                  All,
+			HandlersAndTransformers: []any{},
+			Next:                    firstHandlerNode,
 		},
 
 		doneHandlers: []func(){},
 	}
 }
 
+func NewContextWithHandler(res http.ResponseWriter, req *http.Request, handler any) *Context {
+	return NewContext(res, req, &HandlerNode{
+		Method:                  All,
+		HandlersAndTransformers: []any{handler},
+	})
+}
+
 // NewSubContext creates a new Context from an existing Context. This is useful
 // when you want to create a new Context from an existing one, but with a
 // different handler chain.
-func NewSubContext(ctx *Context, firstHandlerNode *handlerNode, finalNext func()) *Context {
+func NewSubContext(ctx *Context, firstHandlerNode *HandlerNode, finalNext func()) *Context {
 	subContext := *ctx
 	subContext.parentContext = ctx
-	subContext.currentHandlerNode = &handlerNode{
-		method:                  All,
-		pattern:                 nil,
-		handlersAndTransformers: []any{},
-		next:                    firstHandlerNode,
+	subContext.currentHandlerNode = &HandlerNode{
+		Method:                  All,
+		Pattern:                 nil,
+		HandlersAndTransformers: []any{},
+		Next:                    firstHandlerNode,
 	}
 	subContext.matchingHandlerNode = nil
 	subContext.currentHandlerOrTransformerIndex = 0
@@ -102,101 +106,7 @@ func NewSubContext(ctx *Context, firstHandlerNode *handlerNode, finalNext func()
 // middleware style handlers that work on the context before and/or after the
 // responding handler.
 func (c *Context) Next() {
-	shouldRunFinalNext := false
-
-	// In the case that this is a sub context, we need to update the parent
-	// context with the current context's state.
-	defer func() {
-		c.tryUpdateParent()
-		if shouldRunFinalNext {
-			c.FinalNext()
-		}
-	}()
-
-	if c.Error != nil {
-		return
-	}
-
-	// If we have exceeded the deadline, we can return early.
-	if c.deadline != nil && time.Now().After(*c.deadline) {
-		c.Error = errors.New("request exceeded timeout deadline")
-		return
-	}
-
-	// walk the chain looking for a handler with a pattern that matches the method
-	// and path of the request, or until we reach the end of the chain
-	for c.currentHandlerNode != nil {
-
-		// Because handlers can have multiple handler functions or transformers,
-		// we may save a matching handler node to the context so that we can
-		// continue from the same handler until we have executed all of it's
-		// handlers and transformers.
-		//
-		// If we do not have a matching handler node, we will walk the chain
-		// until we find a matching handler node.
-		if c.matchingHandlerNode == nil {
-			for c.currentHandlerNode != nil {
-				if c.tryMatchHandlerNode(c.currentHandlerNode) {
-					c.matchingHandlerNode = c.currentHandlerNode
-					break
-				}
-				c.currentHandlerNode = c.currentHandlerNode.next
-			}
-			if c.matchingHandlerNode == nil {
-				shouldRunFinalNext = true
-				return
-			}
-		}
-
-		// Grab a handler function or transformer from the matching handler node.
-		// If there are more than one, we will continue from the same handler node
-		// the next time Next is called. We iterate through the handler functions
-		// and transformers until we have executed all of them.
-		if c.currentHandlerOrTransformerIndex < len(c.matchingHandlerNode.handlersAndTransformers) {
-			c.currentHandlerOrTransformer = c.currentHandlerNode.handlersAndTransformers[c.currentHandlerOrTransformerIndex]
-			c.currentHandlerOrTransformerIndex += 1
-			break
-		}
-
-		// We only get here if we had a matching handler node, and we have
-		// executed all of it's handlers and transformers. We can now clear the
-		// matching handler node, and continue to the next handler node.
-		c.matchingHandlerNode = nil
-		c.currentHandlerNode = c.currentHandlerNode.next
-		c.currentHandlerOrTransformerIndex = 0
-		c.currentHandlerOrTransformer = nil
-	}
-
-	// If we didn't find a handler function or transformer, check for a final next
-	// function, execute it, and return.
-	if c.currentHandlerOrTransformer == nil {
-		shouldRunFinalNext = true
-		return
-	}
-
-	// Execute the handler function or transformer. Throw an error if it's not
-	// an expected type.
-	if currentTransformer, ok := c.currentHandlerOrTransformer.(Transformer); ok {
-		execWithCtxRecovery(c, func() {
-			currentTransformer.TransformRequest(c)
-			c.Next()
-			currentTransformer.TransformResponse(c)
-		})
-	} else if currentHandler, ok := c.currentHandlerOrTransformer.(Handler); ok {
-		execWithCtxRecovery(c, func() {
-			currentHandler.Handle(c)
-		})
-	} else if currentHandler, ok := c.currentHandlerOrTransformer.(HandlerFunc); ok {
-		execWithCtxRecovery(c, func() {
-			currentHandler(c)
-		})
-	} else if currentHandler, ok := c.currentHandlerOrTransformer.(func(*Context)); ok {
-		execWithCtxRecovery(c, func() {
-			currentHandler(c)
-		})
-	} else {
-		panic(fmt.Sprintf("Unknown handler type: %s", reflect.TypeOf(c.currentHandlerOrTransformer)))
-	}
+	c.next()
 }
 
 // Method returns the HTTP method of the request.
@@ -211,7 +121,7 @@ func (c *Context) Path() string {
 
 // URL returns the URL of the request.
 func (c *Context) URL() *url.URL {
-	return c.url
+	return c.request.URL
 }
 
 // Params returns the parameters of the request.
@@ -221,18 +131,30 @@ func (c *Context) Params() RequestParams {
 
 // Query returns the query parameters of the request.
 func (c *Context) Query() url.Values {
-	return c.query
+	return c.request.URL.Query()
+}
+
+func (c *Context) RequestProtocol() string {
+	return c.request.Proto
+}
+
+func (c *Context) RequestProtocolMajor() int {
+	return c.request.ProtoMajor
+}
+
+func (c *Context) RequestProtocolMinor() int {
+	return c.request.ProtoMinor
 }
 
 // RequestHeaders returns the request headers.
-func (c *Context) RequestHeaders() RequestHeaders {
-	return c.requestHeaders
+func (c *Context) RequestHeaders() http.Header {
+	return c.request.Header
 }
 
 // RequestBodyReader returns a requestBodyReader. This is useful for streaming
 // the request body, or for middleware which collects/parses the request body.
 func (c *Context) RequestBodyReader() io.ReadCloser {
-	return c.requestBodyReader
+	return c.request.Body
 }
 
 // RequestBodyBytes returns the request body bytes of the request.
@@ -266,6 +188,42 @@ func (c *Context) SetRequestBodyUnmarshaller(unmarshaller func(into any) error) 
 // that encodes response bodies should call this method to set the marshaller.
 func (c *Context) SetResponseBodyMarshaller(marshaller func(from any) ([]byte, error)) {
 	c.responseBodyMarshaller = marshaller
+}
+
+func (c *Context) RequestContentLength() int64 {
+	return c.request.ContentLength
+}
+
+func (c *Context) RequestTransferEncoding() []string {
+	return c.request.TransferEncoding
+}
+
+func (c *Context) RequestHost() string {
+	return c.request.Host
+}
+
+func (c *Context) Trailers() http.Header {
+	return c.request.Trailer
+}
+
+func (c *Context) RequestRemoteAddress() string {
+	return c.request.RemoteAddr
+}
+
+func (c *Context) RequestRawURI() string {
+	return c.request.RequestURI
+}
+
+func (c *Context) RequestTLS() *tls.ConnectionState {
+	return c.request.TLS
+}
+
+func (c *Context) Request() *http.Request {
+	return c.request
+}
+
+func (c *Context) ResponseWriter() http.ResponseWriter {
+	return c.bodyWriter
 }
 
 // Write writes bytes to the response body. This is useful for streaming the
@@ -325,6 +283,10 @@ func (c *Context) Err() error {
 // Value is a noop for compatibility with go's context.Context.
 func (c *Context) Value(key any) any {
 	return nil
+}
+
+func CtxFinalize(ctx *Context) {
+	ctx.finalize()
 }
 
 // CtxSet associates a value by it's type with a context. This is for handlers
@@ -414,13 +376,13 @@ func (c *Context) tryUpdateParent() {
 	c.parentContext.hasWrittenBody = c.hasWrittenBody
 }
 
-func (c *Context) tryMatchHandlerNode(node *handlerNode) bool {
-	if node.method != All && node.method != c.method {
+func (c *Context) tryMatchHandlerNode(node *HandlerNode) bool {
+	if node.Method != All && node.Method != c.method {
 		return false
 	}
 
-	if node.pattern != nil {
-		params, ok := node.pattern.Match(c.path)
+	if node.Pattern != nil {
+		params, ok := node.Pattern.Match(c.path)
 		if !ok {
 			return false
 		}
@@ -438,6 +400,161 @@ func (c *Context) markDone() {
 	for _, doneHandler := range c.doneHandlers {
 		doneHandler()
 	}
+}
+
+func (c *Context) next() {
+	shouldRunFinalNext := false
+
+	// In the case that this is a sub context, we need to update the parent
+	// context with the current context's state.
+	defer func() {
+		c.tryUpdateParent()
+		if shouldRunFinalNext {
+			c.FinalNext()
+		}
+	}()
+
+	if c.Error != nil {
+		return
+	}
+
+	// If we have exceeded the deadline, we can return early.
+	if c.deadline != nil && time.Now().After(*c.deadline) {
+		c.Error = errors.New("request exceeded timeout deadline")
+		return
+	}
+
+	// walk the chain looking for a handler with a pattern that matches the method
+	// and path of the request, or until we reach the end of the chain
+	for c.currentHandlerNode != nil {
+
+		// Because handlers can have multiple handler functions or transformers,
+		// we may save a matching handler node to the context so that we can
+		// continue from the same handler until we have executed all of it's
+		// handlers and transformers.
+		//
+		// If we do not have a matching handler node, we will walk the chain
+		// until we find a matching handler node.
+		if c.matchingHandlerNode == nil {
+			for c.currentHandlerNode != nil {
+				if c.tryMatchHandlerNode(c.currentHandlerNode) {
+					c.matchingHandlerNode = c.currentHandlerNode
+					break
+				}
+				c.currentHandlerNode = c.currentHandlerNode.Next
+			}
+			if c.matchingHandlerNode == nil {
+				shouldRunFinalNext = true
+				return
+			}
+		}
+
+		// Grab a handler function or transformer from the matching handler node.
+		// If there are more than one, we will continue from the same handler node
+		// the next time Next is called. We iterate through the handler functions
+		// and transformers until we have executed all of them.
+		if c.currentHandlerOrTransformerIndex < len(c.matchingHandlerNode.HandlersAndTransformers) {
+			c.currentHandlerOrTransformer = c.currentHandlerNode.HandlersAndTransformers[c.currentHandlerOrTransformerIndex]
+			c.currentHandlerOrTransformerIndex += 1
+			break
+		}
+
+		// We only get here if we had a matching handler node, and we have
+		// executed all of it's handlers and transformers. We can now clear the
+		// matching handler node, and continue to the next handler node.
+		c.matchingHandlerNode = nil
+		c.currentHandlerNode = c.currentHandlerNode.Next
+		c.currentHandlerOrTransformerIndex = 0
+		c.currentHandlerOrTransformer = nil
+	}
+
+	// If we didn't find a handler function or transformer, check for a final next
+	// function, execute it, and return.
+	if c.currentHandlerOrTransformer == nil {
+		shouldRunFinalNext = true
+		return
+	}
+
+	// Execute the handler function or transformer. Throw an error if it's not
+	// an expected type.
+	if currentTransformer, ok := c.currentHandlerOrTransformer.(Transformer); ok {
+		execWithCtxRecovery(c, func() {
+			currentTransformer.TransformRequest(c)
+			c.Next()
+			currentTransformer.TransformResponse(c)
+		})
+	} else if currentHandler, ok := c.currentHandlerOrTransformer.(Handler); ok {
+		execWithCtxRecovery(c, func() {
+			currentHandler.Handle(c)
+		})
+	} else if currentHandler, ok := c.currentHandlerOrTransformer.(HandlerFunc); ok {
+		execWithCtxRecovery(c, func() {
+			currentHandler(c)
+		})
+	} else if currentHandler, ok := c.currentHandlerOrTransformer.(func(*Context)); ok {
+		execWithCtxRecovery(c, func() {
+			currentHandler(c)
+		})
+	} else {
+		panic(fmt.Sprintf("Unknown handler type: %s", reflect.TypeOf(c.currentHandlerOrTransformer)))
+	}
+}
+
+func (c *Context) finalize() {
+	if c.Error != nil {
+		c.Status = 500
+		if PrintHandlerErrors {
+			fmt.Printf("Error occurred when handling request: %s\n%s", c.Error, c.ErrorStack)
+		}
+	}
+
+	finalBody := make([]byte, 0)
+	if !c.hasWrittenBody && c.Body != nil {
+		switch body := c.Body.(type) {
+		case string:
+			finalBody = []byte(body)
+		case []byte:
+			finalBody = body
+		default:
+			marshalledBytes, err := c.marshallResponseBody()
+			if err != nil {
+				c.Status = 500
+				fmt.Printf("Error occurred when marshalling response body: %s", err)
+			} else {
+				finalBody = marshalledBytes
+			}
+		}
+	}
+
+	if c.Status == 0 {
+		if len(finalBody) == 0 {
+			c.Status = 404
+		} else {
+			c.Status = 200
+		}
+	}
+
+	if !c.hasWrittenHeaders {
+		for key, value := range c.Headers {
+			c.bodyWriter.Header().Set(key, value)
+		}
+		c.bodyWriter.WriteHeader(c.Status)
+	}
+
+	hasBody := len(finalBody) != 0
+	is100Range := c.Status >= 100 && c.Status < 200
+	is204Or304 := c.Status == 204 || c.Status == 304
+
+	if hasBody {
+		if is100Range || is204Or304 {
+			fmt.Printf("Response with status %d has body but no content is expected", c.Status)
+		} else if _, err := c.bodyWriter.Write(finalBody); err != nil {
+			fmt.Printf("Error occurred when writing response: %s", err)
+		}
+	}
+
+	c.clearContextData()
+	c.markDone()
 }
 
 func execWithCtxRecovery(ctx *Context, fn func()) {
