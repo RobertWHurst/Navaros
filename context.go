@@ -9,6 +9,13 @@ import (
 	"time"
 )
 
+// MaxRequestBodySize is the maximum size of a request body. Changing this
+// value will affect all requests. Set to -1 to disable the limit. If
+// MaxRequestBodySize is set on the context it will override this value. This
+// setting is useful for preventing denial of service attacks. It is not
+// recommended to set this value to -1 unless you know what you are doing!!!
+var MaxRequestBodySize int64 = 1024 * 1024 * 10 // 10MB
+
 // Context represents a request and response. Navaros handlers access the
 // request and build the response through the context.
 type Context struct {
@@ -27,6 +34,8 @@ type Context struct {
 	bodyWriter        http.ResponseWriter
 	hasWrittenHeaders bool
 	hasWrittenBody    bool
+
+	MaxRequestBodySize int64
 
 	Error           error
 	ErrorStack      string
@@ -160,7 +169,14 @@ func (c *Context) RequestCookie(name string) (*http.Cookie, error) {
 // RequestBodyReader returns a requestBodyReader. This is useful for streaming
 // the request body, or for middleware which collects/parses the request body.
 func (c *Context) RequestBodyReader() io.ReadCloser {
-	return c.request.Body
+	maxRequestBodySize := c.MaxRequestBodySize
+	if c.MaxRequestBodySize == 0 {
+		maxRequestBodySize = MaxRequestBodySize
+	}
+	if maxRequestBodySize == -1 {
+		return c.request.Body
+	}
+	return http.MaxBytesReader(c.bodyWriter, c.request.Body, maxRequestBodySize)
 }
 
 // Allows middleware to intercept the request body reader and replace it with

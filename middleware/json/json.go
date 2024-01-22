@@ -13,7 +13,7 @@ type Options struct {
 	disableResponseBodyMarshaller  bool
 }
 
-func Middleware(options Options) func(ctx *navaros.Context) {
+func Middleware(options *Options) func(ctx *navaros.Context) {
 	return func(ctx *navaros.Context) {
 		if !options.disableRequestBodyUnmarshaller {
 			unmarshalRequestBody(ctx)

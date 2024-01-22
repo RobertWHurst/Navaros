@@ -3,6 +3,7 @@ package navaros
 import (
 	"errors"
 	"fmt"
+	"net/http"
 	"reflect"
 	"runtime/debug"
 	"strings"
@@ -89,6 +90,8 @@ func (c *Context) next() {
 		execWithCtxRecovery(c, func() {
 			currentHandler(c)
 		})
+	} else if _, ok := c.currentHandlerOrTransformer.(func(res http.ResponseWriter, req *http.Request)); ok {
+		panic("http.HandlerFunc are not yet supported")
 	} else {
 		panic(fmt.Sprintf("Unknown handler type: %s", reflect.TypeOf(c.currentHandlerOrTransformer)))
 	}
