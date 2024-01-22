@@ -5,12 +5,13 @@ import (
 	"testing"
 
 	"github.com/RobertWHurst/navaros"
-	"github.com/stretchr/testify/assert"
 )
 
 func TestRouteDescriptorMarshalJSON(t *testing.T) {
 	pattern, err := navaros.NewPattern("/a/b/c")
-	assert.Nil(t, err)
+	if err != nil {
+		t.Errorf("Failed to create pattern: %s", err.Error())
+	}
 
 	r := &navaros.RouteDescriptor{
 		Method:  navaros.Get,
@@ -18,23 +19,39 @@ func TestRouteDescriptorMarshalJSON(t *testing.T) {
 	}
 
 	bytes, err := r.MarshalJSON()
-	assert.Nil(t, err)
+	if err != nil {
+		t.Errorf("Failed to marshal route descriptor: %s", err.Error())
+	}
 
 	jsonData := map[string]any{}
 	err = json.Unmarshal(bytes, &jsonData)
-	assert.Nil(t, err)
+	if err != nil {
+		t.Errorf("Failed to unmarshal route descriptor: %s", err.Error())
+	}
 
-	assert.Equal(t, "GET", jsonData["Method"])
-	assert.Equal(t, "/a/b/c", jsonData["Pattern"])
+	if len(jsonData) != 2 {
+		t.Errorf("Expected 2 keys, got %d", len(jsonData))
+	}
+	if jsonData["Method"] != "GET" {
+		t.Errorf("Expected Method to be GET, got %s", jsonData["Method"])
+	}
+	if jsonData["Pattern"] != "/a/b/c" {
+		t.Errorf("Expected Pattern to be /a/b/c, got %s", jsonData["Pattern"])
+	}
 }
 
 func TestRouteDescriptorUnmarshalJSON(t *testing.T) {
 	jsonData := []byte(`{"Method":"GET","Pattern":"/a/b/c"}`)
 
 	r := &navaros.RouteDescriptor{}
-	err := r.UnmarshalJSON(jsonData)
+	if err := r.UnmarshalJSON(jsonData); err != nil {
+		t.Errorf("Failed to unmarshal route descriptor: %s", err.Error())
+	}
 
-	assert.Nil(t, err)
-	assert.Equal(t, navaros.Get, r.Method)
-	assert.Equal(t, "/a/b/c", r.Pattern.String())
+	if r.Method != navaros.Get {
+		t.Errorf("Expected Method to be GET, got %s", r.Method)
+	}
+	if r.Pattern.String() != "/a/b/c" {
+		t.Errorf("Expected Pattern to be /a/b/c, got %s", r.Pattern)
+	}
 }
