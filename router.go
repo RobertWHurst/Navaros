@@ -21,7 +21,7 @@ func NewRouter() *Router {
 }
 
 func (r *Router) ServeHTTP(res http.ResponseWriter, req *http.Request) {
-	ctx := NewContext(res, req, r.firstHandlerNode)
+	ctx := newContextWithNode(res, req, r.firstHandlerNode)
 	ctx.Next()
 	ctx.finalize()
 }
@@ -30,7 +30,7 @@ func (r *Router) ServeHTTP(res http.ResponseWriter, req *http.Request) {
 // through the mux's handler chain. If the last handler calls next, it
 // will call next on the original context.
 func (r *Router) Handle(ctx *Context) {
-	subCtx := NewSubContext(ctx, r.firstHandlerNode, func() {
+	subCtx := newSubContext(ctx, r.firstHandlerNode, func() {
 		ctx.Next()
 	})
 	subCtx.Next()
@@ -54,6 +54,7 @@ func (r *Router) Use(handlersAndTransformers ...any) {
 			handlersAndTransformers = handlersAndTransformers[1:]
 		}
 	}
+
 	r.bind(false, All, mountPath, handlersAndTransformers...)
 }
 
@@ -146,22 +147,20 @@ func (r *Router) bind(isPublic bool, method HTTPMethod, path string, handlersAnd
 		panic(fmt.Errorf("invalid handler or transformer type: %s", handlerOrTransformerRefType.String()))
 	}
 
-	if isPublic {
-		hasAddedOwnRouteDescriptor := false
-		for _, handlerOrTransformer := range handlersAndTransformers {
-			if routerHandler, ok := handlerOrTransformer.(RouterHandler); ok {
-				for _, routeDescriptor := range routerHandler.RouteDescriptors() {
-					mountPath := strings.TrimSuffix(path, "/**")
-					subPattern, err := NewPattern(mountPath + routeDescriptor.Pattern.String())
-					if err != nil {
-						panic(err)
-					}
-					r.addRouteDescriptor(routeDescriptor.Method, subPattern)
+	hasAddedOwnRouteDescriptor := false
+	for _, handlerOrTransformer := range handlersAndTransformers {
+		if routerHandler, ok := handlerOrTransformer.(RouterHandler); ok {
+			for _, routeDescriptor := range routerHandler.RouteDescriptors() {
+				mountPath := strings.TrimSuffix(path, "/**")
+				subPattern, err := NewPattern(mountPath + routeDescriptor.Pattern.String())
+				if err != nil {
+					panic(err)
 				}
-			} else if !hasAddedOwnRouteDescriptor {
-				r.addRouteDescriptor(method, pattern)
-				hasAddedOwnRouteDescriptor = true
+				r.addRouteDescriptor(routeDescriptor.Method, subPattern)
 			}
+		} else if isPublic && !hasAddedOwnRouteDescriptor {
+			r.addRouteDescriptor(method, pattern)
+			hasAddedOwnRouteDescriptor = true
 		}
 	}
 

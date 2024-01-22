@@ -53,10 +53,17 @@ type Context struct {
 
 var contextData = make(map[*Context]map[string]any)
 
-// NewContext creates a new Context from go's http.ResponseWriter and
+func NewContext(res http.ResponseWriter, req *http.Request, handler any) *Context {
+	return newContextWithNode(res, req, &HandlerNode{
+		Method:                  All,
+		HandlersAndTransformers: []any{handler},
+	})
+}
+
+// newContextWithNode creates a new Context from go's http.ResponseWriter and
 // http.Request. It also takes a handler node - the start of the handler
 // chain.
-func NewContext(res http.ResponseWriter, req *http.Request, firstHandlerNode *HandlerNode) *Context {
+func newContextWithNode(res http.ResponseWriter, req *http.Request, firstHandlerNode *HandlerNode) *Context {
 	return &Context{
 		request: req,
 
@@ -76,17 +83,10 @@ func NewContext(res http.ResponseWriter, req *http.Request, firstHandlerNode *Ha
 	}
 }
 
-func NewContextWithHandler(res http.ResponseWriter, req *http.Request, handler any) *Context {
-	return NewContext(res, req, &HandlerNode{
-		Method:                  All,
-		HandlersAndTransformers: []any{handler},
-	})
-}
-
-// NewSubContext creates a new Context from an existing Context. This is useful
+// newSubContext creates a new Context from an existing Context. This is useful
 // when you want to create a new Context from an existing one, but with a
 // different handler chain.
-func NewSubContext(ctx *Context, firstHandlerNode *HandlerNode, finalNext func()) *Context {
+func newSubContext(ctx *Context, firstHandlerNode *HandlerNode, finalNext func()) *Context {
 	subContext := *ctx
 	subContext.parentContext = ctx
 	subContext.currentHandlerNode = &HandlerNode{

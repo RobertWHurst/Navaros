@@ -91,7 +91,7 @@ func TestRouterGetErroredHandler(t *testing.T) {
 		ctx.Error = errors.New("Hello World")
 		ctx.Next()
 	})
-	m.Get("/a/b/c", func(ctx *navaros.Context) {
+	m.Get("/a/b/c", func(_ *navaros.Context) {
 		calledHandler = true
 	})
 
@@ -111,7 +111,7 @@ func TestRouterGetPanickedHandler(t *testing.T) {
 	m.Get("/a/b/c", func(ctx *navaros.Context) {
 		panic("Hello World")
 	})
-	m.Get("/a/b/c", func(ctx *navaros.Context) {
+	m.Get("/a/b/c", func(_ *navaros.Context) {
 		calledHandler = true
 	})
 
@@ -153,11 +153,11 @@ func TestRouterGetSubRouter(t *testing.T) {
 	assert.True(t, calledThirdHandler)
 }
 
-func TestRouterGetRouteDescriptors(t *testing.T) {
+func TestRouterPublicRouteDescriptors(t *testing.T) {
 	m := navaros.NewRouter()
-	m.Get("/a/b/c", func(ctx *navaros.Context) {})
-	m.Get("/a/b/c", func(ctx *navaros.Context) {})
-	m.Post("/e/:f/*", func(ctx *navaros.Context) {})
+	m.PublicGet("/a/b/c", func(ctx *navaros.Context) {})
+	m.PublicGet("/a/b/c", func(ctx *navaros.Context) {})
+	m.PublicPost("/e/:f/*", func(ctx *navaros.Context) {})
 
 	descriptors := m.RouteDescriptors()
 
@@ -168,18 +168,18 @@ func TestRouterGetRouteDescriptors(t *testing.T) {
 	assert.Equal(t, "/e/:f/*", descriptors[1].Pattern.String())
 }
 
-func TestRouterGetRouteDescriptorsWithSubRouter(t *testing.T) {
+func TestRouterPublicRouteDescriptorsWithSubRouter(t *testing.T) {
 	m3 := navaros.NewRouter()
-	m3.Get("/a/b/c", func(ctx *navaros.Context) {})
-	m3.Post("/a/b/c", func(ctx *navaros.Context) {})
+	m3.PublicGet("/a/b/c", func(ctx *navaros.Context) {})
+	m3.PublicPost("/a/b/c", func(ctx *navaros.Context) {})
 
 	m2 := navaros.NewRouter()
-	m2.Get("/a/b/c", func(ctx *navaros.Context) {})  //x
-	m2.Post("/a/b/c", func(ctx *navaros.Context) {}) //x
+	m2.PublicGet("/a/b/c", func(ctx *navaros.Context) {})  //x
+	m2.PublicPost("/a/b/c", func(ctx *navaros.Context) {}) //x
 
 	m1 := navaros.NewRouter()
-	m1.Get("/a/b/c", func(ctx *navaros.Context) {})  //x
-	m2.Post("/a/b/c", func(ctx *navaros.Context) {}) //x
+	m1.PublicGet("/a/b/c", func(ctx *navaros.Context) {})  //x
+	m2.PublicPost("/a/b/c", func(ctx *navaros.Context) {}) //x
 
 	m1.Use(m2)
 	m1.Use("/a/b/c", m3)
