@@ -1,6 +1,7 @@
 package json
 
 import (
+	"bytes"
 	"encoding/json"
 	"io"
 
@@ -12,7 +13,7 @@ type Options struct {
 	disableResponseBodyMarshaller  bool
 }
 
-func Middleware(options Options) navaros.HandlerFunc {
+func Middleware(options Options) func(ctx *navaros.Context) {
 	return func(ctx *navaros.Context) {
 		if !options.disableRequestBodyUnmarshaller {
 			unmarshalRequestBody(ctx)
@@ -39,7 +40,6 @@ func unmarshalRequestBody(ctx *navaros.Context) {
 		ctx.Error = err
 		return
 	}
-	ctx.SetRequestBodyBytes(requestBodyBytes)
 
 	ctx.SetRequestBodyUnmarshaller(func(into any) error {
 		return json.Unmarshal(requestBodyBytes, into)
@@ -47,10 +47,14 @@ func unmarshalRequestBody(ctx *navaros.Context) {
 }
 
 func marshalResponseBody(ctx *navaros.Context) {
-	ctx.SetResponseBodyMarshaller(func(from any) ([]byte, error) {
+	ctx.SetResponseBodyMarshaller(func(from any) (io.Reader, error) {
 		if from != nil {
-			ctx.Headers["Content-Type"] = "application/json"
+			ctx.Headers.Add("Content-Type", "application/json")
 		}
-		return json.Marshal(from)
+		jsonBytes, err := json.Marshal(from)
+		if err != nil {
+			return nil, err
+		}
+		return bytes.NewBuffer(jsonBytes), nil
 	})
 }

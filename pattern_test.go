@@ -1,278 +1,303 @@
 package navaros_test
 
 import (
-	"github.com/RobertWHurst/navaros"
+	"strings"
+	"testing"
 
-	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
+	"github.com/RobertWHurst/navaros"
 )
 
-var _ = Describe("Pattern", func() {
+func TestNewPattern(t *testing.T) {
+	pattern, err := navaros.NewPattern("/a/b/c")
+	if err != nil {
+		t.Error(err)
+	}
+	if pattern == nil {
+		t.Error("pattern is nil")
+	}
+}
 
-	Describe("NewPattern", func() {
-		It("should return a pattern", func() {
-			pattern, err := navaros.NewPattern("/a/b/c")
-			Expect(err).To(BeNil())
-			Expect(pattern).ToNot(BeNil())
-		})
+func TestNewPatternWithInvalid(t *testing.T) {
+	_, err := navaros.NewPattern("/a/b/c(")
+	if err == nil {
+		t.Error("expected error")
+	}
+}
 
-		It("should return an error if the pattern is invalid", func() {
-			_, err := navaros.NewPattern("/a/b/c(")
-			Expect(err).ToNot(BeNil())
-		})
-	})
-
-	DescribeTable("Match",
-		func(patternStr string, pathStr string, shouldMatch bool, expectedError string, expectedParams map[string]string) {
-			pattern, err := navaros.NewPattern(patternStr)
-			if expectedError == "" {
-				params, isMatch := pattern.Match(pathStr)
-				Expect(isMatch).To(Equal(shouldMatch))
-				if expectedParams == nil {
-					Expect(params).To(BeEmpty())
-				} else {
-					Expect(params).To(Equal(expectedParams))
-				}
-			} else {
-				Expect(err).To(MatchError(ContainSubstring(expectedError)))
-			}
-		},
-		Entry("should match a static path",
+func TestPatternMatch(t *testing.T) {
+	cases := []struct {
+		message        string
+		patternStr     string
+		pathStr        string
+		shouldMatch    bool
+		expectedError  string
+		expectedParams map[string]string
+	}{
+		{"should match a static path",
 			"/a/b/c", "/a/b/c", true, "",
 			nil,
-		),
-		Entry("should match a static path with a trailing slash",
+		},
+		{"should match a static path with a trailing slash",
 			"/a/b/c", "/a/b/c/", true, "",
 			nil,
-		),
-		Entry("should match a static path with an optional chunk",
+		},
+		{"should match a static path with an optional chunk",
 			"/a/b?/c", "/a/c", true, "",
 			nil,
-		),
-		Entry(
-			"should match a static path with an optional chunk and a trailing slash",
+		},
+		{"should match a static path with an optional chunk and a trailing slash",
 			"/a/b?/c", "/a/c/", true, "",
 			nil,
-		),
-		Entry("should match a static path with a one or more chunks",
+		},
+		{"should match a static path with a one or more chunks",
 			"/a/b+/c", "/a/b/c", true, "",
 			nil,
-		),
-		Entry("should match a static path with a one or more chunks and a trailing slash",
+		},
+		{"should match a static path with a one or more chunks and a trailing slash",
 			"/a/b+/c", "/a/b/c/", true, "",
 			nil,
-		),
-		Entry("should match a static path with a zero or more chunks",
+		},
+		{"should match a static path with a zero or more chunks",
 			"/a/b*/c", "/a/c", true, "",
 			nil,
-		),
-		Entry("should match a static path with a zero or more chunks and a trailing slash",
+		},
+		{"should match a static path with a zero or more chunks and a trailing slash",
 			"/a/b*/c", "/a/c/", true, "",
 			nil,
-		),
-		Entry("should match a dynamic path",
+		},
+		{"should match a dynamic path",
 			"/a/:b/c", "/a/123/c", true, "",
 			map[string]string{
 				"b": "123",
 			},
-		),
-		Entry("should match a dynamic path with a trailing slash",
+		},
+		{"should match a dynamic path with a trailing slash",
 			"/a/:b/c", "/a/123/c/", true, "",
 			map[string]string{
 				"b": "123",
 			},
-		),
-		Entry("should match a dynamic path with an optional chunk",
+		},
+		{"should match a dynamic path with an optional chunk",
 			"/a/:b?/c", "/a/c", true, "",
 			map[string]string{
 				"b": "",
 			},
-		),
-		Entry("should match a dynamic path with an optional chunk and a trailing slash",
+		},
+		{"should match a dynamic path with an optional chunk and a trailing slash",
 			"/a/:b?/c", "/a/c/", true, "",
 			map[string]string{
 				"b": "",
 			},
-		),
-		Entry("should match a dynamic path with a one or more chunks",
+		},
+		{"should match a dynamic path with a one or more chunks",
 			"/a/:b+/c", "/a/123/d/c", true, "",
 			map[string]string{
 				"b": "123/d",
 			},
-		),
-		Entry("should match a dynamic path with a one or more chunks and a trailing slash",
+		},
+		{"should match a dynamic path with a one or more chunks and a trailing slash",
 			"/a/:b+/c", "/a/123/d/c/", true, "",
 			map[string]string{
 				"b": "123/d",
 			},
-		),
-		Entry("should match a dynamic path with a zero or more chunks",
+		},
+		{"should match a dynamic path with a zero or more chunks",
 			"/a/:b*/c", "/a/c", true, "",
 			map[string]string{
 				"b": "",
 			},
-		),
-		Entry("should match a dynamic path with a zero or more chunks and a trailing slash",
+		},
+		{"should match a dynamic path with a zero or more chunks and a trailing slash",
 			"/a/:b*/c", "/a/c/", true, "",
 			map[string]string{
 				"b": "",
 			},
-		),
-		Entry("should match a dynamic path with a custom sub pattern",
+		},
+		{"should match a dynamic path with a custom sub pattern",
 			"/a/:b(\\d+)/c", "/a/123/c", true, "",
 			map[string]string{
 				"b": "123",
 			},
-		),
-		Entry("should match a dynamic path with a custom sub pattern and a trailing slash",
+		},
+		{"should match a dynamic path with a custom sub pattern and a trailing slash",
 			"/a/:b(\\d+)/c", "/a/123/c/", true, "",
 			map[string]string{
 				"b": "123",
 			},
-		),
-		Entry("should match a wildcard path",
+		},
+		{"should match a wildcard path",
 			"/a/*/c", "/a/123/c", true, "",
 			nil,
-		),
-		Entry("should match a wildcard path with a trailing slash",
+		},
+		{"should match a wildcard path with a trailing slash",
 			"/a/*/c", "/a/123/c/", true, "",
 			nil,
-		),
-		Entry("should match a wildcard path with an optional chunk",
+		},
+		{"should match a wildcard path with an optional chunk",
 			"/a/*?/c", "/a/c", true, "",
 			nil,
-		),
-		Entry("should match a wildcard path with an optional chunk and a trailing slash",
+		},
+		{"should match a wildcard path with an optional chunk and a trailing slash",
 			"/a/*?/c", "/a/c/", true, "",
 			nil,
-		),
-		Entry("should match a wildcard path with a custom sub pattern",
+		},
+		{"should match a wildcard path with a custom sub pattern",
 			"/a/*(\\d+)/c", "/a/123/c", true, "",
 			nil,
-		),
-		Entry("should match a wildcard path with a custom sub pattern and a trailing slash",
+		},
+		{"should match a wildcard path with a custom sub pattern and a trailing slash",
 			"/a/*(\\d+)/c", "/a/123/c/", true, "",
 			nil,
-		),
-		Entry("should maatch a path with a custom sub pattern on its own",
+		},
+		{"should maatch a path with a custom sub pattern on its own",
 			"/a/(\\d+)/c", "/a/123/c", true, "",
 			nil,
-		),
-		Entry("should not match a non matching static path",
+		},
+		{"should not match a non matching static path",
 			"/a/b/c", "/a/b/d", false, "",
 			nil,
-		),
-		Entry("should not match a non matching static path with a trailing slash",
+		},
+		{"should not match a non matching static path with a trailing slash",
 			"/a/b/c", "/a/b/d/", false, "",
 			nil,
-		),
-		Entry("should not match a non matching static path with an optional chunk",
+		},
+		{"should not match a non matching static path with an optional chunk",
 			"/a/b?/c", "/a/d", false, "",
 			nil,
-		),
-		Entry("should not match a non matching static path with an optional chunk and a trailing slash",
+		},
+		{"should not match a non matching static path with an optional chunk and a trailing slash",
 			"/a/b?/c", "/a/d/", false, "",
 			nil,
-		),
-		Entry("should not match a non matching static path with a one or more chunks",
+		},
+		{"should not match a non matching static path with a one or more chunks",
 			"/a/b+/c", "/a/b/d", false, "",
 			nil,
-		),
-		Entry("should not match a non matching static path with a one or more chunks and a trailing slash",
+		},
+		{"should not match a non matching static path with a one or more chunks and a trailing slash",
 			"/a/b+/c", "/a/b/d/", false, "",
 			nil,
-		),
-		Entry("should not match a non matching static path with a zero or more chunks",
+		},
+		{"should not match a non matching static path with a zero or more chunks",
 			"/a/b*/c", "/a/d", false, "",
 			nil,
-		),
-		Entry("should not match a non matching static path with a zero or more chunks and a trailing slash",
+		},
+		{"should not match a non matching static path with a zero or more chunks and a trailing slash",
 			"/a/b*/c", "/a/d/", false, "",
 			nil,
-		),
-		Entry("should not match a non matching dynamic path",
+		},
+		{"should not match a non matching dynamic path",
 			"/a/:b/c", "/a/123/d", false, "",
 			nil,
-		),
-		Entry("should not match a non matching dynamic path with a trailing slash",
+		},
+		{"should not match a non matching dynamic path with a trailing slash",
 			"/a/:b/c", "/a/123/d/", false, "",
 			nil,
-		),
-		Entry("should not match a non matching dynamic path with an optional chunk",
+		},
+		{"should not match a non matching dynamic path with an optional chunk",
 			"/a/:b?/c", "/a/d", false, "",
 			nil,
-		),
-		Entry("should not match a non matching dynamic path with an optional chunk and a trailing slash",
+		},
+		{"should not match a non matching dynamic path with an optional chunk and a trailing slash",
 			"/a/:b?/c", "/a/d/", false, "",
 			nil,
-		),
-		Entry("should not match a non matching dynamic path with a one or more chunks",
+		},
+		{"should not match a non matching dynamic path with a one or more chunks",
 			"/a/:b+/c", "/a/123/d", false, "",
 			nil,
-		),
-		Entry("should not match a non matching dynamic path with a one or more chunks and a trailing slash",
+		},
+		{"should not match a non matching dynamic path with a one or more chunks and a trailing slash",
 			"/a/:b+/c", "/a/123/d/", false, "",
 			nil,
-		),
-		Entry("should not match a non matching dynamic path with a zero or more chunks",
+		},
+		{"should not match a non matching dynamic path with a zero or more chunks",
 			"/a/:b*/c", "/a/d", false, "",
 			nil,
-		),
-		Entry("should not match a non matching dynamic path with a zero or more chunks and a trailing slash",
+		},
+		{"should not match a non matching dynamic path with a zero or more chunks and a trailing slash",
 			"/a/:b*/c", "/a/d/", false, "",
 			nil,
-		),
-		Entry("should not match a non matching dynamic path with a custom sub pattern",
+		},
+		{"should not match a non matching dynamic path with a custom sub pattern",
 			"/a/:b(\\d+)/c", "/a/abc/c", false, "",
 			nil,
-		),
-		Entry("should not match a non matching dynamic path with a custom sub pattern and a trailing slash",
+		},
+		{"should not match a non matching dynamic path with a custom sub pattern and a trailing slash",
 			"/a/:b(\\d+)/c", "/a/abc/c/", false, "",
 			nil,
-		),
-		Entry("should not match a non matching wildcard path",
+		},
+		{"should not match a non matching wildcard path",
 			"/a/*/c", "/a/123/d", false, "",
 			nil,
-		),
-		Entry("should not match a non matching wildcard path with a trailing slash",
+		},
+		{"should not match a non matching wildcard path with a trailing slash",
 			"/a/*/c", "/a/123/d/", false, "",
 			nil,
-		),
-		Entry("should not match a non matching wildcard path with an optional chunk",
+		},
+		{"should not match a non matching wildcard path with an optional chunk",
 			"/a/*?/c", "/a/d", false, "",
 			nil,
-		),
-		Entry("should not match a non matching wildcard path with an optional chunk and a trailing slash",
+		},
+		{"should not match a non matching wildcard path with an optional chunk and a trailing slash",
 			"/a/*?/c", "/a/d/", false, "",
 			nil,
-		),
-		Entry("should not match a non matching wildcard path with a custom sub pattern",
+		},
+		{"should not match a non matching wildcard path with a custom sub pattern",
 			"/a/*(\\d+)/c", "/a/abc/c", false, "",
 			nil,
-		),
-		Entry("should not match a non matching wildcard path with a custom sub pattern and a trailing slash",
+		},
+		{"should not match a non matching wildcard path with a custom sub pattern and a trailing slash",
 			"/a/*(\\d+)/c", "/a/abc/c/", false, "",
 			nil,
-		),
-		Entry("should error if pattern does not start with a slash",
+		},
+		{"should error if pattern does not start with a slash",
 			"a/b/c", "/a/b/c", false, "must start with a leading slash",
 			nil,
-		),
-		Entry("should error if the pattern contains an unclosed sub pattern",
+		},
+		{"should error if the pattern contains an unclosed sub pattern",
 			"/a/:b(\\d+/c", "/a/123/c", false, "invalid named capture",
 			nil,
-		),
-		Entry("should error if a dynamic chunk does not have a name",
+		},
+		{"should error if a dynamic chunk does not have a name",
 			"/a/:(\\d+)/c", "/a/123/c", false, "dynamic chunks must have a name",
 			nil,
-		),
-	)
+		},
+	}
 
-	Describe("String", func() {
-		It("should return the pattern string", func() {
-			pattern, err := navaros.NewPattern("/a/b/c")
-			Expect(err).To(BeNil())
-			Expect(pattern.String()).To(Equal("/a/b/c"))
+	for _, c := range cases {
+		t.Run(c.message, func(t *testing.T) {
+			pattern, err := navaros.NewPattern(c.patternStr)
+			if c.expectedError == "" {
+				params, isMatch := pattern.Match(c.pathStr)
+				if isMatch != c.shouldMatch {
+					t.Errorf("expected isMatch to be %v but got %v", c.shouldMatch, isMatch)
+				}
+				if c.expectedParams == nil {
+					if len(params) != 0 {
+						t.Errorf("expected params to be empty but got %v", params)
+					}
+				} else {
+					if params == nil {
+						t.Errorf("expected params to be %v but got nil", c.expectedParams)
+					}
+				}
+			} else {
+				if err == nil {
+					t.Error("expected error")
+				}
+				if !strings.Contains(err.Error(), c.expectedError) {
+					t.Errorf("expected error to contain %v but got %v", c.expectedError, err.Error())
+				}
+			}
 		})
-	})
-})
+	}
+}
+
+func TestPatternString(t *testing.T) {
+	pattern, err := navaros.NewPattern("/a/b/c")
+	if err != nil {
+		t.Error(err)
+	}
+	if pattern.String() != "/a/b/c" {
+		t.Error("pattern string does not match")
+	}
+}

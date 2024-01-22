@@ -6,14 +6,13 @@ import (
 	"testing"
 
 	"github.com/RobertWHurst/navaros"
-	"github.com/stretchr/testify/assert"
 )
 
 func TestNewRouter(t *testing.T) {
 	navaros.NewRouter()
 }
 
-func TestRouterGetSimpleHandler(t *testing.T) {
+func Test_Router_Get__SimpleHandler(t *testing.T) {
 	r := httptest.NewRequest("GET", "/a/b/c", nil)
 	w := httptest.NewRecorder()
 
@@ -25,11 +24,15 @@ func TestRouterGetSimpleHandler(t *testing.T) {
 
 	m.ServeHTTP(w, r)
 
-	assert.Equal(t, 201, w.Code)
-	assert.Equal(t, "Hello World", w.Body.String())
+	if w.Code != 201 {
+		t.Error("expected 201")
+	}
+	if w.Body.String() != "Hello World" {
+		t.Error("expected Hello World")
+	}
 }
 
-func TestRouterGetMiddlewareAndHandler(t *testing.T) {
+func TestRouterGetWithMiddlewareAndHandler(t *testing.T) {
 	r := httptest.NewRequest("GET", "/a/b/c", nil)
 	w := httptest.NewRecorder()
 
@@ -51,11 +54,15 @@ func TestRouterGetMiddlewareAndHandler(t *testing.T) {
 
 	m.ServeHTTP(w, r)
 
-	assert.Equal(t, 201, w.Code)
-	assert.Equal(t, "Hello World", w.Body.String())
+	if w.Code != 201 {
+		t.Errorf("expected 201, got %d", w.Code)
+	}
+	if w.Body.String() != "Hello World" {
+		t.Errorf("expected Hello World, got %s", w.Body.String())
+	}
 }
 
-func TestRouterGetMiddlewareAndHandlerInline(t *testing.T) {
+func TestRouterGetWithMiddlewareAndHandlerInline(t *testing.T) {
 	r := httptest.NewRequest("GET", "/a/b/c", nil)
 	w := httptest.NewRecorder()
 
@@ -76,8 +83,12 @@ func TestRouterGetMiddlewareAndHandlerInline(t *testing.T) {
 
 	m.ServeHTTP(w, r)
 
-	assert.Equal(t, 200, w.Code)
-	assert.Equal(t, "Hello World", w.Body.String())
+	if w.Code != 200 {
+		t.Errorf("expected 200, got %d", w.Code)
+	}
+	if w.Body.String() != "Hello World" {
+		t.Errorf("expected Hello World, got %s", w.Body.String())
+	}
 }
 
 func TestRouterGetErroredHandler(t *testing.T) {
@@ -97,8 +108,12 @@ func TestRouterGetErroredHandler(t *testing.T) {
 
 	m.ServeHTTP(w, r)
 
-	assert.Equal(t, 500, w.Code)
-	assert.False(t, calledHandler)
+	if w.Code != 500 {
+		t.Errorf("expected 500, got %d", w.Code)
+	}
+	if calledHandler {
+		t.Error("expected handler not to be called")
+	}
 }
 
 func TestRouterGetPanickedHandler(t *testing.T) {
@@ -117,8 +132,12 @@ func TestRouterGetPanickedHandler(t *testing.T) {
 
 	m.ServeHTTP(w, r)
 
-	assert.Equal(t, 500, w.Code)
-	assert.False(t, calledHandler)
+	if w.Code != 500 {
+		t.Errorf("expected 500, got %d", w.Code)
+	}
+	if calledHandler {
+		t.Error("expected handler not to be called")
+	}
 }
 
 func TestRouterGetSubRouter(t *testing.T) {
@@ -148,9 +167,56 @@ func TestRouterGetSubRouter(t *testing.T) {
 
 	m1.ServeHTTP(w, r)
 
-	assert.True(t, calledFirstHandler)
-	assert.True(t, calledSecondHandler)
-	assert.True(t, calledThirdHandler)
+	if !calledFirstHandler {
+		t.Error("expected first handler to be called")
+	}
+	if !calledSecondHandler {
+		t.Error("expected second handler to be called")
+	}
+	if !calledThirdHandler {
+		t.Error("expected third handler to be called")
+	}
+}
+
+func TestRouterGetSubSubRouter(t *testing.T) {
+	r := httptest.NewRequest("GET", "/a/b/c", nil)
+	w := httptest.NewRecorder()
+
+	calledFirstHandler := false
+	calledSecondHandler := false
+	calledThirdHandler := false
+
+	m3 := navaros.NewRouter()
+	m3.Get("/a/b/c", func(ctx *navaros.Context) {
+		calledThirdHandler = true
+		ctx.Next()
+	})
+
+	m2 := navaros.NewRouter()
+	m2.Get("/a/b/c", func(ctx *navaros.Context) {
+		calledSecondHandler = true
+		ctx.Next()
+	})
+	m2.Use(m3)
+
+	m1 := navaros.NewRouter()
+	m1.Get("/a/b/c", func(ctx *navaros.Context) {
+		calledFirstHandler = true
+		ctx.Next()
+	})
+	m1.Use(m2)
+
+	m1.ServeHTTP(w, r)
+
+	if !calledFirstHandler {
+		t.Error("expected first handler to be called")
+	}
+	if !calledSecondHandler {
+		t.Error("expected second handler to be called")
+	}
+	if !calledThirdHandler {
+		t.Error("expected third handler to be called")
+	}
 }
 
 func TestRouterPublicRouteDescriptors(t *testing.T) {
@@ -161,11 +227,21 @@ func TestRouterPublicRouteDescriptors(t *testing.T) {
 
 	descriptors := m.RouteDescriptors()
 
-	assert.Len(t, descriptors, 2)
-	assert.Equal(t, navaros.Get, descriptors[0].Method)
-	assert.Equal(t, "/a/b/c", descriptors[0].Pattern.String())
-	assert.Equal(t, navaros.Post, descriptors[1].Method)
-	assert.Equal(t, "/e/:f/*", descriptors[1].Pattern.String())
+	if len(descriptors) != 2 {
+		t.Errorf("expected 2 descriptors, got %d", len(descriptors))
+	}
+	if descriptors[0].Method != navaros.Get {
+		t.Errorf("expected Get method, got %s", descriptors[0].Method)
+	}
+	if descriptors[0].Pattern.String() != "/a/b/c" {
+		t.Errorf("expected /a/b/c pattern, got %s", descriptors[0].Pattern.String())
+	}
+	if descriptors[1].Method != navaros.Post {
+		t.Errorf("expected Post method, got %s", descriptors[1].Method)
+	}
+	if descriptors[1].Pattern.String() != "/e/:f/*" {
+		t.Errorf("expected /e/:f/* pattern, got %s", descriptors[1].Pattern.String())
+	}
 }
 
 func TestRouterPublicRouteDescriptorsWithSubRouter(t *testing.T) {
@@ -186,15 +262,33 @@ func TestRouterPublicRouteDescriptorsWithSubRouter(t *testing.T) {
 
 	descriptors := m1.RouteDescriptors()
 
-	assert.Len(t, descriptors, 4)
+	if len(descriptors) != 4 {
+		t.Errorf("expected 4 descriptors, got %d", len(descriptors))
+	}
 
-	assert.Equal(t, navaros.Get, descriptors[0].Method)
-	assert.Equal(t, "/a/b/c", descriptors[0].Pattern.String())
-	assert.Equal(t, navaros.Post, descriptors[1].Method)
-	assert.Equal(t, "/a/b/c", descriptors[1].Pattern.String())
+	if descriptors[0].Method != navaros.Get {
+		t.Errorf("expected Get method, got %s", descriptors[0].Method)
+	}
+	if descriptors[0].Pattern.String() != "/a/b/c" {
+		t.Errorf("expected /a/b/c pattern, got %s", descriptors[0].Pattern.String())
+	}
+	if descriptors[1].Method != navaros.Post {
+		t.Errorf("expected Post method, got %s", descriptors[1].Method)
+	}
+	if descriptors[1].Pattern.String() != "/a/b/c" {
+		t.Errorf("expected /a/b/c pattern, got %s", descriptors[1].Pattern.String())
+	}
 
-	assert.Equal(t, navaros.Get, descriptors[2].Method)
-	assert.Equal(t, "/a/b/c/a/b/c", descriptors[2].Pattern.String())
-	assert.Equal(t, navaros.Post, descriptors[3].Method)
-	assert.Equal(t, "/a/b/c/a/b/c", descriptors[3].Pattern.String())
+	if descriptors[2].Method != navaros.Get {
+		t.Errorf("expected Get method, got %s", descriptors[2].Method)
+	}
+	if descriptors[2].Pattern.String() != "/a/b/c/a/b/c" {
+		t.Errorf("expected /a/b/c/a/b/c pattern, got %s", descriptors[2].Pattern.String())
+	}
+	if descriptors[3].Method != navaros.Post {
+		t.Errorf("expected Post method, got %s", descriptors[3].Method)
+	}
+	if descriptors[3].Pattern.String() != "/a/b/c/a/b/c" {
+		t.Errorf("expected /a/b/c/a/b/c pattern, got %s", descriptors[3].Pattern.String())
+	}
 }

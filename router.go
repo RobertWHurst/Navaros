@@ -1,7 +1,6 @@
 package navaros
 
 import (
-	"fmt"
 	"net/http"
 	"reflect"
 	"strings"
@@ -21,7 +20,7 @@ func NewRouter() *Router {
 }
 
 func (r *Router) ServeHTTP(res http.ResponseWriter, req *http.Request) {
-	ctx := newContextWithNode(res, req, r.firstHandlerNode)
+	ctx := NewContextWithNode(res, req, r.firstHandlerNode)
 	ctx.Next()
 	ctx.finalize()
 }
@@ -30,9 +29,7 @@ func (r *Router) ServeHTTP(res http.ResponseWriter, req *http.Request) {
 // through the mux's handler chain. If the last handler calls next, it
 // will call next on the original context.
 func (r *Router) Handle(ctx *Context) {
-	subCtx := newSubContext(ctx, r.firstHandlerNode, func() {
-		ctx.Next()
-	})
+	subCtx := NewSubContextWithNode(ctx, r.firstHandlerNode)
 	subCtx.Next()
 }
 
@@ -137,14 +134,14 @@ func (r *Router) bind(isPublic bool, method HTTPMethod, path string, handlersAnd
 			continue
 		} else if _, ok := handlerOrTransformer.(Handler); ok {
 			continue
-		} else if _, ok := handlerOrTransformer.(HandlerFunc); ok {
-			continue
 		} else if _, ok := handlerOrTransformer.(func(*Context)); ok {
 			continue
 		}
 
-		handlerOrTransformerRefType := reflect.TypeOf(handlerOrTransformer)
-		panic(fmt.Errorf("invalid handler or transformer type: %s", handlerOrTransformerRefType.String()))
+		panic(
+			"invalid handler type. Must be a Transformer, Handler, or " +
+				"func(*Context). Got: " + reflect.TypeOf(handlerOrTransformer).String(),
+		)
 	}
 
 	hasAddedOwnRouteDescriptor := false

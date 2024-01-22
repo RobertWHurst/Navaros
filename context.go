@@ -3,13 +3,9 @@ package navaros
 import (
 	"crypto/tls"
 	"errors"
-	"fmt"
 	"io"
 	"net/http"
 	"net/url"
-	"reflect"
-	"runtime/debug"
-	"strings"
 	"time"
 )
 
@@ -20,13 +16,13 @@ type Context struct {
 
 	request *http.Request
 
-	method           HTTPMethod
-	path             string
-	params           RequestParams
-	requestBodyBytes []byte
+	method HTTPMethod
+	path   string
+	params RequestParams
 
 	Status            int
-	Headers           ResponseHeaders
+	Headers           http.Header
+	Cookies           []*http.Cookie
 	Body              any
 	bodyWriter        http.ResponseWriter
 	hasWrittenHeaders bool
@@ -37,10 +33,8 @@ type Context struct {
 	FinalError      error
 	FinalErrorStack string
 
-	FinalNext func()
-
 	requestBodyUnmarshaller func(into any) error
-	responseBodyMarshaller  func(from any) ([]byte, error)
+	responseBodyMarshaller  func(from any) (io.Reader, error)
 
 	currentHandlerNode               *HandlerNode
 	matchingHandlerNode              *HandlerNode
@@ -53,24 +47,24 @@ type Context struct {
 
 var contextData = make(map[*Context]map[string]any)
 
-func NewContext(res http.ResponseWriter, req *http.Request, handler any) *Context {
-	return newContextWithNode(res, req, &HandlerNode{
+func NewContext(res http.ResponseWriter, req *http.Request, handlers ...any) *Context {
+	return NewContextWithNode(res, req, &HandlerNode{
 		Method:                  All,
-		HandlersAndTransformers: []any{handler},
+		HandlersAndTransformers: handlers,
 	})
 }
 
-// newContextWithNode creates a new Context from go's http.ResponseWriter and
+// NewContextWithNode creates a new Context from go's http.ResponseWriter and
 // http.Request. It also takes a handler node - the start of the handler
 // chain.
-func newContextWithNode(res http.ResponseWriter, req *http.Request, firstHandlerNode *HandlerNode) *Context {
+func NewContextWithNode(res http.ResponseWriter, req *http.Request, firstHandlerNode *HandlerNode) *Context {
 	return &Context{
 		request: req,
 
 		method: HTTPMethod(req.Method),
 		path:   req.URL.Path,
 
-		Headers:    map[string]string{},
+		Headers:    http.Header{},
 		bodyWriter: res,
 
 		currentHandlerNode: &HandlerNode{
@@ -83,10 +77,19 @@ func newContextWithNode(res http.ResponseWriter, req *http.Request, firstHandler
 	}
 }
 
-// newSubContext creates a new Context from an existing Context. This is useful
+// NewSubContextWithNode creates a new Context from an existing Context. This is useful
 // when you want to create a new Context from an existing one, but with a
 // different handler chain.
-func newSubContext(ctx *Context, firstHandlerNode *HandlerNode, finalNext func()) *Context {
+func NewSubContextWithNode(ctx *Context, firstHandlerNode *HandlerNode) *Context {
+	finalHandlerNode := firstHandlerNode
+	for finalHandlerNode.Next != nil {
+		finalHandlerNode = finalHandlerNode.Next
+	}
+	finalHandlerNode.Next = &HandlerNode{
+		Method:                  All,
+		HandlersAndTransformers: []any{func(_ *Context) { ctx.Next() }},
+	}
+
 	subContext := *ctx
 	subContext.parentContext = ctx
 	subContext.currentHandlerNode = &HandlerNode{
@@ -98,7 +101,6 @@ func newSubContext(ctx *Context, firstHandlerNode *HandlerNode, finalNext func()
 	subContext.matchingHandlerNode = nil
 	subContext.currentHandlerOrTransformerIndex = 0
 	subContext.currentHandlerOrTransformer = nil
-	subContext.FinalNext = finalNext
 	return &subContext
 }
 
@@ -134,15 +136,15 @@ func (c *Context) Query() url.Values {
 	return c.request.URL.Query()
 }
 
-func (c *Context) RequestProtocol() string {
+func (c *Context) Protocol() string {
 	return c.request.Proto
 }
 
-func (c *Context) RequestProtocolMajor() int {
+func (c *Context) ProtocolMajor() int {
 	return c.request.ProtoMajor
 }
 
-func (c *Context) RequestProtocolMinor() int {
+func (c *Context) ProtocolMinor() int {
 	return c.request.ProtoMinor
 }
 
@@ -151,27 +153,31 @@ func (c *Context) RequestHeaders() http.Header {
 	return c.request.Header
 }
 
+func (c *Context) RequestCookie(name string) (*http.Cookie, error) {
+	return c.request.Cookie(name)
+}
+
 // RequestBodyReader returns a requestBodyReader. This is useful for streaming
 // the request body, or for middleware which collects/parses the request body.
 func (c *Context) RequestBodyReader() io.ReadCloser {
 	return c.request.Body
 }
 
-// RequestBodyBytes returns the request body bytes of the request.
-func (c *Context) RequestBodyBytes() ([]byte, error) {
-	if c.requestBodyBytes == nil {
-		return nil, errors.New("no request body set. use RequestBodyReader() or add body parser middleware")
+// Allows middleware to intercept the request body reader and replace it with
+// their own. This is useful transformers that re-write the request body
+// in a streaming fashion.
+func (c *Context) SetRequestBodyReader(reader io.Reader) {
+	if readCloser, ok := reader.(io.ReadCloser); ok {
+		c.request.Body = readCloser
+	} else {
+		c.request.Body = io.NopCloser(reader)
 	}
-	return c.requestBodyBytes, nil
 }
 
 // UnmarshalRequestBody unmarshals the request body into a given value. Note
 // that is method requires SetRequestBodyUnmarshaller to be called first. This
 // likely is done by middleware for parsing request bodies.
 func (c *Context) UnmarshalRequestBody(into any) error {
-	if c.requestBodyBytes == nil {
-		return errors.New("no request body set. use RequestBodyReader() or add body parser middleware")
-	}
 	if c.requestBodyUnmarshaller == nil {
 		return errors.New("no request body unmarshaller set. use SetRequestBodyUnmarshaller() or add body parser middleware")
 	}
@@ -186,7 +192,7 @@ func (c *Context) SetRequestBodyUnmarshaller(unmarshaller func(into any) error) 
 
 // SetResponseBodyMarshaller sets the response body marshaller. Middleware
 // that encodes response bodies should call this method to set the marshaller.
-func (c *Context) SetResponseBodyMarshaller(marshaller func(from any) ([]byte, error)) {
+func (c *Context) SetResponseBodyMarshaller(marshaller func(from any) (io.Reader, error)) {
 	c.responseBodyMarshaller = marshaller
 }
 
@@ -248,12 +254,8 @@ func (c *Context) Flush() {
 	c.bodyWriter.(http.Flusher).Flush()
 }
 
-// SetStatus sets the response status code.
-func (c *Context) SetRequestBodyBytes(body []byte) {
-	c.requestBodyBytes = body
-}
-
-// Deadline returns the deadline of the request.
+// Deadline returns the deadline of the request. Deadline is part of the go
+// context.Context interface.
 func (c *Context) Deadline() (time.Time, bool) {
 	ok := c.deadline != nil
 	deadline := time.Time{}
@@ -264,7 +266,7 @@ func (c *Context) Deadline() (time.Time, bool) {
 }
 
 // Done added for compatibility with go's context.Context. Alias for
-// UntilFinish().
+// UntilFinish(). Done is part of the go context.Context interface.
 func (c *Context) Done() <-chan struct{} {
 	doneChan := make(chan struct{})
 	c.doneHandlers = append(c.doneHandlers, func() {
@@ -275,7 +277,7 @@ func (c *Context) Done() <-chan struct{} {
 
 // Err returns the final error of the request. Will be nil if the request
 // is still being served even if an error has occurred. Populated once the
-// request is done.
+// request is done. Err is part of the go context.Context interface.
 func (c *Context) Err() error {
 	return c.FinalError
 }
@@ -285,81 +287,11 @@ func (c *Context) Value(key any) any {
 	return nil
 }
 
-func CtxFinalize(ctx *Context) {
-	ctx.finalize()
-}
-
-// CtxSet associates a value by it's type with a context. This is for handlers
-// and middleware to share data with other handlers and middleware associated
-// with the context.
-func CtxSet(ctx *Context, value any) {
-	for ctx.parentContext != nil {
-		ctx = ctx.parentContext
-	}
-
-	valueType := reflect.TypeOf(value).String()
-
-	if contextData[ctx] == nil {
-		contextData[ctx] = make(map[string]any)
-	}
-	contextData[ctx][valueType] = value
-}
-
-// CtxGet retrieves a value by it's type from a context. This is for handlers
-// and middleware to retrieve data set in association with the context by
-// other handlers and middleware.
-func CtxGet[V any](ctx *Context) (V, bool) {
-	for ctx.parentContext != nil {
-		ctx = ctx.parentContext
-	}
-
-	var v V
-	targetType := reflect.TypeOf(v).String()
-
-	var target V
-	contextData, ok := contextData[ctx]
-	if !ok {
-		return target, false
-	}
-	value, ok := contextData[targetType]
-	if !ok {
-		return target, false
-	}
-
-	return value.(V), true
-}
-
-// CtxMustGet like CtxGet retrieves a value by it's type from a context, but
-// unlike CtxGet it panics if the value is not found.
-func CtxMustGet[V any](ctx *Context) V {
-	for ctx.parentContext != nil {
-		ctx = ctx.parentContext
-	}
-
-	var v V
-	targetType := reflect.TypeOf(v).String()
-
-	contextData, ok := contextData[ctx]
-	if !ok {
-		panic("Context data not found for context")
-	}
-	value, ok := contextData[targetType]
-	if !ok {
-		panic(fmt.Sprintf("Context data not found for type: %s", targetType))
-	}
-
-	return value.(V)
-}
-
-func (c *Context) marshallResponseBody() ([]byte, error) {
+func (c *Context) marshallResponseBody() (io.Reader, error) {
 	if c.responseBodyMarshaller == nil {
 		return nil, errors.New("no response body marshaller set. use SetResponseBodyMarshaller() or add body encoder middleware")
 	}
 	return c.responseBodyMarshaller(c.Body)
-}
-
-func (c *Context) clearContextData() {
-	delete(contextData, c)
 }
 
 func (c *Context) tryUpdateParent() {
@@ -392,184 +324,4 @@ func (c *Context) tryMatchHandlerNode(node *HandlerNode) bool {
 	}
 
 	return true
-}
-
-func (c *Context) markDone() {
-	c.FinalError = c.Error
-	c.FinalErrorStack = c.ErrorStack
-	for _, doneHandler := range c.doneHandlers {
-		doneHandler()
-	}
-}
-
-func (c *Context) next() {
-	shouldRunFinalNext := false
-
-	// In the case that this is a sub context, we need to update the parent
-	// context with the current context's state.
-	defer func() {
-		c.tryUpdateParent()
-		if shouldRunFinalNext {
-			c.FinalNext()
-		}
-	}()
-
-	if c.Error != nil {
-		return
-	}
-
-	// If we have exceeded the deadline, we can return early.
-	if c.deadline != nil && time.Now().After(*c.deadline) {
-		c.Error = errors.New("request exceeded timeout deadline")
-		return
-	}
-
-	// walk the chain looking for a handler with a pattern that matches the method
-	// and path of the request, or until we reach the end of the chain
-	for c.currentHandlerNode != nil {
-
-		// Because handlers can have multiple handler functions or transformers,
-		// we may save a matching handler node to the context so that we can
-		// continue from the same handler until we have executed all of it's
-		// handlers and transformers.
-		//
-		// If we do not have a matching handler node, we will walk the chain
-		// until we find a matching handler node.
-		if c.matchingHandlerNode == nil {
-			for c.currentHandlerNode != nil {
-				if c.tryMatchHandlerNode(c.currentHandlerNode) {
-					c.matchingHandlerNode = c.currentHandlerNode
-					break
-				}
-				c.currentHandlerNode = c.currentHandlerNode.Next
-			}
-			if c.matchingHandlerNode == nil {
-				shouldRunFinalNext = true
-				return
-			}
-		}
-
-		// Grab a handler function or transformer from the matching handler node.
-		// If there are more than one, we will continue from the same handler node
-		// the next time Next is called. We iterate through the handler functions
-		// and transformers until we have executed all of them.
-		if c.currentHandlerOrTransformerIndex < len(c.matchingHandlerNode.HandlersAndTransformers) {
-			c.currentHandlerOrTransformer = c.currentHandlerNode.HandlersAndTransformers[c.currentHandlerOrTransformerIndex]
-			c.currentHandlerOrTransformerIndex += 1
-			break
-		}
-
-		// We only get here if we had a matching handler node, and we have
-		// executed all of it's handlers and transformers. We can now clear the
-		// matching handler node, and continue to the next handler node.
-		c.matchingHandlerNode = nil
-		c.currentHandlerNode = c.currentHandlerNode.Next
-		c.currentHandlerOrTransformerIndex = 0
-		c.currentHandlerOrTransformer = nil
-	}
-
-	// If we didn't find a handler function or transformer, check for a final next
-	// function, execute it, and return.
-	if c.currentHandlerOrTransformer == nil {
-		shouldRunFinalNext = true
-		return
-	}
-
-	// Execute the handler function or transformer. Throw an error if it's not
-	// an expected type.
-	if currentTransformer, ok := c.currentHandlerOrTransformer.(Transformer); ok {
-		execWithCtxRecovery(c, func() {
-			currentTransformer.TransformRequest(c)
-			c.Next()
-			currentTransformer.TransformResponse(c)
-		})
-	} else if currentHandler, ok := c.currentHandlerOrTransformer.(Handler); ok {
-		execWithCtxRecovery(c, func() {
-			currentHandler.Handle(c)
-		})
-	} else if currentHandler, ok := c.currentHandlerOrTransformer.(HandlerFunc); ok {
-		execWithCtxRecovery(c, func() {
-			currentHandler(c)
-		})
-	} else if currentHandler, ok := c.currentHandlerOrTransformer.(func(*Context)); ok {
-		execWithCtxRecovery(c, func() {
-			currentHandler(c)
-		})
-	} else {
-		panic(fmt.Sprintf("Unknown handler type: %s", reflect.TypeOf(c.currentHandlerOrTransformer)))
-	}
-}
-
-func (c *Context) finalize() {
-	if c.Error != nil {
-		c.Status = 500
-		if PrintHandlerErrors {
-			fmt.Printf("Error occurred when handling request: %s\n%s", c.Error, c.ErrorStack)
-		}
-	}
-
-	finalBody := make([]byte, 0)
-	if !c.hasWrittenBody && c.Body != nil {
-		switch body := c.Body.(type) {
-		case string:
-			finalBody = []byte(body)
-		case []byte:
-			finalBody = body
-		default:
-			marshalledBytes, err := c.marshallResponseBody()
-			if err != nil {
-				c.Status = 500
-				fmt.Printf("Error occurred when marshalling response body: %s", err)
-			} else {
-				finalBody = marshalledBytes
-			}
-		}
-	}
-
-	if c.Status == 0 {
-		if len(finalBody) == 0 {
-			c.Status = 404
-		} else {
-			c.Status = 200
-		}
-	}
-
-	if !c.hasWrittenHeaders {
-		for key, value := range c.Headers {
-			c.bodyWriter.Header().Set(key, value)
-		}
-		c.bodyWriter.WriteHeader(c.Status)
-	}
-
-	hasBody := len(finalBody) != 0
-	is100Range := c.Status >= 100 && c.Status < 200
-	is204Or304 := c.Status == 204 || c.Status == 304
-
-	if hasBody {
-		if is100Range || is204Or304 {
-			fmt.Printf("Response with status %d has body but no content is expected", c.Status)
-		} else if _, err := c.bodyWriter.Write(finalBody); err != nil {
-			fmt.Printf("Error occurred when writing response: %s", err)
-		}
-	}
-
-	c.clearContextData()
-	c.markDone()
-}
-
-func execWithCtxRecovery(ctx *Context, fn func()) {
-	defer func() {
-		if maybeErr := recover(); maybeErr != nil {
-			if err, ok := maybeErr.(error); ok {
-				ctx.Error = err
-			} else {
-				ctx.Error = fmt.Errorf("%s", maybeErr)
-			}
-
-			stack := string(debug.Stack())
-			stackLines := strings.Split(stack, "\n")
-			ctx.ErrorStack = strings.Join(stackLines[6:], "\n")
-		}
-	}()
-	fn()
 }
