@@ -10,6 +10,10 @@ import (
 	"strings"
 )
 
+// finalize is called by the router after all matching handlers have processed
+// the request. It is responsible for writing the response to the client. For
+// libraries which which to extend or encapsulate the functionality of Navaros,
+// Finalize can be called with the CtxFinalize function.
 func (c *Context) finalize() {
 	if c.Error != nil {
 		c.Status = 500

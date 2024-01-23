@@ -12,7 +12,7 @@ func TestNewRouter(t *testing.T) {
 	navaros.NewRouter()
 }
 
-func Test_Router_Get__SimpleHandler(t *testing.T) {
+func TestRouterGetSimpleHandler(t *testing.T) {
 	r := httptest.NewRequest("GET", "/a/b/c", nil)
 	w := httptest.NewRecorder()
 

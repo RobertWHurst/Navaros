@@ -5,11 +5,17 @@ import (
 	"regexp"
 )
 
+// Pattern is used to compare and match request paths to route patterns.
+// Patterns are used by the router to determine which handlers to execute for
+// a given request.
 type Pattern struct {
 	str    string
 	regExp *regexp.Regexp
 }
 
+// NewPattern creates a new pattern from a string. The string should be a
+// valid route pattern. If the string is not a valid route pattern, an error
+// is returned.
 func NewPattern(patternStr string) (*Pattern, error) {
 	patternRegExp, err := regExpFromPattern(patternStr)
 	if err != nil {
@@ -22,6 +28,10 @@ func NewPattern(patternStr string) (*Pattern, error) {
 	}, nil
 }
 
+// Match compares a path to the pattern and returns a map of named parameters
+// extracted from the path as per the pattern. If the path matches the pattern,
+// the second return value will be true. If the path does not match the pattern,
+// the second return value will be false.
 func (p *Pattern) Match(path string) (map[string]string, bool) {
 	matches := p.regExp.FindStringSubmatch(path)
 	if len(matches) == 0 {
@@ -40,6 +50,7 @@ func (p *Pattern) Match(path string) (map[string]string, bool) {
 	return params, true
 }
 
+// String returns the string representation of the pattern.
 func (p *Pattern) String() string {
 	return p.str
 }
@@ -69,6 +80,8 @@ type chunk = struct {
 	pattern  string
 }
 
+// regExpFromPattern converts a route pattern string to a regular expression.
+// This is the heart of Pattern and parses the pattern character by character.
 func regExpFromPattern(patternStr string) (*regexp.Regexp, error) {
 	patternRunes := []rune(patternStr)
 	patternRunesLen := len(patternRunes)

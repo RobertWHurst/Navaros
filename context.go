@@ -56,6 +56,10 @@ type Context struct {
 
 var contextData = make(map[*Context]map[string]any)
 
+// NewContext creates a new Context from go's http.ResponseWriter and
+// http.Request. It also takes a variadic list of handlers. This is useful for
+// creating a new Context outside of a router, and can be used by libraries
+// which wish to extend or encapsulate the functionality of Navaros.
 func NewContext(res http.ResponseWriter, req *http.Request, handlers ...any) *Context {
 	return NewContextWithNode(res, req, &HandlerNode{
 		Method:                  All,
@@ -64,8 +68,10 @@ func NewContext(res http.ResponseWriter, req *http.Request, handlers ...any) *Co
 }
 
 // NewContextWithNode creates a new Context from go's http.ResponseWriter and
-// http.Request. It also takes a handler node - the start of the handler
-// chain.
+// http.Request. It also takes a HandlerNode - a link in a chain of handlers.
+// This is useful for creating a new Context outside of a router, and can be
+// used by libraries which wish to extend or encapsulate the functionality of
+// Navaros. For example, implementing a custom router.
 func NewContextWithNode(res http.ResponseWriter, req *http.Request, firstHandlerNode *HandlerNode) *Context {
 	return &Context{
 		request: req,
@@ -86,9 +92,10 @@ func NewContextWithNode(res http.ResponseWriter, req *http.Request, firstHandler
 	}
 }
 
-// NewSubContextWithNode creates a new Context from an existing Context. This is useful
-// when you want to create a new Context from an existing one, but with a
-// different handler chain.
+// NewSubContextWithNode creates a new Context from an existing Context. This
+// is useful when you want to create a new Context from an existing one, but
+// with a different handler chain. Note that when the end of the sub context's
+// handler chain is reached, the parent context's handler chain will continue.
 func NewSubContextWithNode(ctx *Context, firstHandlerNode *HandlerNode) *Context {
 	finalHandlerNode := firstHandlerNode
 	for finalHandlerNode.Next != nil {
@@ -135,7 +142,9 @@ func (c *Context) URL() *url.URL {
 	return c.request.URL
 }
 
-// Params returns the parameters of the request.
+// Params returns the parameters of the request. These are defined by the
+// route pattern used to bind each handler, and may be different for each
+// time next is called.
 func (c *Context) Params() RequestParams {
 	return c.params
 }
@@ -145,14 +154,17 @@ func (c *Context) Query() url.Values {
 	return c.request.URL.Query()
 }
 
+// Protocol returns the http protocol version of the request.
 func (c *Context) Protocol() string {
 	return c.request.Proto
 }
 
+// ProtocolMajor returns the major number in http protocol version.
 func (c *Context) ProtocolMajor() int {
 	return c.request.ProtoMajor
 }
 
+// ProtocolMinor returns the minor number in http protocol version.
 func (c *Context) ProtocolMinor() int {
 	return c.request.ProtoMinor
 }
@@ -162,12 +174,21 @@ func (c *Context) RequestHeaders() http.Header {
 	return c.request.Header
 }
 
+// RequestTrailers returns the trailing headers of the request if set.
+func (c *Context) RequestTrailers() http.Header {
+	return c.request.Trailer
+}
+
+// RequestCookies returns the value of a request cookie by name. Returns nil
+// if the cookie does not exist.
 func (c *Context) RequestCookie(name string) (*http.Cookie, error) {
 	return c.request.Cookie(name)
 }
 
-// RequestBodyReader returns a requestBodyReader. This is useful for streaming
-// the request body, or for middleware which collects/parses the request body.
+// RequestBodyReader returns a reader setup to read in the request body. This
+// is useful for streaming the request body, or for middleware which decodes
+// the request body. Without body handling middleware, the request body reader
+// is the only way to access request body data.
 func (c *Context) RequestBodyReader() io.ReadCloser {
 	maxRequestBodySize := c.MaxRequestBodySize
 	if c.MaxRequestBodySize == 0 {
@@ -181,7 +202,8 @@ func (c *Context) RequestBodyReader() io.ReadCloser {
 
 // Allows middleware to intercept the request body reader and replace it with
 // their own. This is useful transformers that re-write the request body
-// in a streaming fashion.
+// in a streaming fashion. It's also useful for transformers that re-encode
+// the request body.
 func (c *Context) SetRequestBodyReader(reader io.Reader) {
 	if readCloser, ok := reader.(io.ReadCloser); ok {
 		c.request.Body = readCloser
@@ -212,38 +234,47 @@ func (c *Context) SetResponseBodyMarshaller(marshaller func(from any) (io.Reader
 	c.responseBodyMarshaller = marshaller
 }
 
+// RequestContentLength returns the length of the request body if provided by
+// the client.
 func (c *Context) RequestContentLength() int64 {
 	return c.request.ContentLength
 }
 
+// RequestTransferEncoding returns the transfer encoding of the request
 func (c *Context) RequestTransferEncoding() []string {
 	return c.request.TransferEncoding
 }
 
+// RequestHost returns the host of the request. Useful for determining the
+// source of the request.
 func (c *Context) RequestHost() string {
 	return c.request.Host
 }
 
-func (c *Context) Trailers() http.Header {
-	return c.request.Trailer
-}
-
+// RequestRemoteAddress returns the remote address of the request. Useful for
+// determining the source of the request.
 func (c *Context) RequestRemoteAddress() string {
 	return c.request.RemoteAddr
 }
 
+// RequestRawURI returns the raw URI of the request. This will be the original
+// value from the request headers.
 func (c *Context) RequestRawURI() string {
 	return c.request.RequestURI
 }
 
+// RequestTLS returns the TLS connection state of the request if the request
+// is using TLS.
 func (c *Context) RequestTLS() *tls.ConnectionState {
 	return c.request.TLS
 }
 
+// Request returns the underlying http.Request object.
 func (c *Context) Request() *http.Request {
 	return c.request
 }
 
+// ResponseWriter returns the underlying http.ResponseWriter object.
 func (c *Context) ResponseWriter() http.ResponseWriter {
 	return c.bodyWriter
 }
@@ -303,6 +334,9 @@ func (c *Context) Value(key any) any {
 	return nil
 }
 
+// marshallResponseBody uses a responseBodyMarshaller to marshall the response
+// body into a reader if one has been set with SetResponseBodyMarshaller.
+// It will return an error if no marshaller has been set.
 func (c *Context) marshallResponseBody() (io.Reader, error) {
 	if c.responseBodyMarshaller == nil {
 		return nil, errors.New("no response body marshaller set. use SetResponseBodyMarshaller() or add body encoder middleware")
@@ -310,6 +344,8 @@ func (c *Context) marshallResponseBody() (io.Reader, error) {
 	return c.responseBodyMarshaller(c.Body)
 }
 
+// tryUpdateParent updates the parent context with the current context's
+// state. This is called by Next() when the current context is a sub context.
 func (c *Context) tryUpdateParent() {
 	if c.parentContext == nil {
 		return
@@ -324,6 +360,9 @@ func (c *Context) tryUpdateParent() {
 	c.parentContext.hasWrittenBody = c.hasWrittenBody
 }
 
+// tryMatchHandlerNode attempts to match a handler node's route pattern and http
+// method to the current context. It will return true if the handler node
+// matches, and false if it does not.
 func (c *Context) tryMatchHandlerNode(node *HandlerNode) bool {
 	if node.Method != All && node.Method != c.method {
 		return false

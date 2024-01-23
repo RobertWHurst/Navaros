@@ -5,19 +5,30 @@ import (
 	"strings"
 )
 
+// HTTPMethod represents an HTTP method.
 type HTTPMethod string
 
 const (
-	All     HTTPMethod = "ALL"
-	Post    HTTPMethod = "POST"
-	Get     HTTPMethod = "GET"
-	Put     HTTPMethod = "PUT"
-	Patch   HTTPMethod = "PATCH"
-	Delete  HTTPMethod = "DELETE"
+	// All represents all HTTP methods.
+	All HTTPMethod = "ALL"
+	// Post represents the HTTP POST method.
+	Post HTTPMethod = "POST"
+	// Get represents the HTTP GET method.
+	Get HTTPMethod = "GET"
+	// Put represents the HTTP PUT method.
+	Put HTTPMethod = "PUT"
+	// Patch represents the HTTP PATCH method.
+	Patch HTTPMethod = "PATCH"
+	// Delete represents the HTTP DELETE method.
+	Delete HTTPMethod = "DELETE"
+	// Options represents the HTTP OPTIONS method.
 	Options HTTPMethod = "OPTIONS"
-	Head    HTTPMethod = "HEAD"
+	// Head represents the HTTP HEAD method.
+	Head HTTPMethod = "HEAD"
 )
 
+// HTTPMethodFromString converts a string to an HTTPMethod.
+// If the string is not a valid HTTP method, an error is returned.
 func HTTPMethodFromString(method string) HTTPMethod {
 	switch strings.ToUpper(method) {
 	case "ALL", "*":

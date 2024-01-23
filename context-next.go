@@ -10,6 +10,11 @@ import (
 	"time"
 )
 
+// next is called by the public Next method on the context. It can be called
+// by handlers to pass the request to the next handler in the chain. Next
+// determines which handler is the next matching the request, and executes
+// it. For each matching handler node, next will attach params from the path
+// to the context. If there are no more handlers, next will do nothing.
 func (c *Context) next() {
 	// In the case that this is a sub context, we need to update the parent
 	// context with the current context's state.
