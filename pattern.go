@@ -2,7 +2,8 @@ package navaros
 
 import (
 	"errors"
-	"regexp"
+
+	"github.com/grafana/regexp"
 )
 
 // Pattern is used to compare and match request paths to route patterns.
@@ -32,7 +33,7 @@ func NewPattern(patternStr string) (*Pattern, error) {
 // extracted from the path as per the pattern. If the path matches the pattern,
 // the second return value will be true. If the path does not match the pattern,
 // the second return value will be false.
-func (p *Pattern) Match(path string) (map[string]string, bool) {
+func (p *Pattern) Match(path string) (RequestParams, bool) {
 	matches := p.regExp.FindStringSubmatch(path)
 	if len(matches) == 0 {
 		return nil, false
@@ -40,7 +41,7 @@ func (p *Pattern) Match(path string) (map[string]string, bool) {
 
 	keys := p.regExp.SubexpNames()
 
-	params := make(map[string]string)
+	params := make(RequestParams, len(keys))
 	for i := 1; i < len(keys); i += 1 {
 		if keys[i] != "" {
 			params[keys[i]] = matches[i]
@@ -48,6 +49,30 @@ func (p *Pattern) Match(path string) (map[string]string, bool) {
 	}
 
 	return params, true
+}
+
+func (p *Pattern) MatchInto(path string, params *RequestParams) bool {
+	matches := p.regExp.FindStringSubmatch(path)
+	if len(matches) == 0 {
+		return false
+	}
+
+	keys := p.regExp.SubexpNames()
+
+	if *params == nil {
+		*params = make(map[string]string, len(keys))
+	}
+
+	for key := range *params {
+		delete(*params, key)
+	}
+	for i := 1; i < len(keys); i += 1 {
+		if keys[i] != "" {
+			(*params)[keys[i]] = matches[i]
+		}
+	}
+
+	return true
 }
 
 // String returns the string representation of the pattern.

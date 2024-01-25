@@ -31,9 +31,9 @@ func (c *Context) finalize() {
 		case Redirect:
 			redirect = &body
 		case string:
-			finalBodyReader = bytes.NewBufferString(body)
+			finalBodyReader = strings.NewReader(body)
 		case []byte:
-			finalBodyReader = bytes.NewBuffer(body)
+			finalBodyReader = bytes.NewReader(body)
 		default:
 			marshalledReader, err := c.marshallResponseBody()
 			if err != nil {
@@ -110,8 +110,6 @@ func (c *Context) finalize() {
 			}
 		}
 	}
-
-	delete(contextData, c)
 
 	c.FinalError = c.Error
 	c.FinalErrorStack = c.ErrorStack

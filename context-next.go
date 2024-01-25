@@ -43,7 +43,7 @@ func (c *Context) next() {
 		// until we find a matching handler node.
 		if c.matchingHandlerNode == nil {
 			for c.currentHandlerNode != nil {
-				if c.tryMatchHandlerNode(c.currentHandlerNode) {
+				if c.currentHandlerNode.tryMatch(c) {
 					c.matchingHandlerNode = c.currentHandlerNode
 					break
 				}

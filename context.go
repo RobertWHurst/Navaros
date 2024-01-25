@@ -50,11 +50,11 @@ type Context struct {
 	currentHandlerOrTransformerIndex int
 	currentHandlerOrTransformer      any
 
+	associatedValues map[string]any
+
 	deadline     *time.Time
 	doneHandlers []func()
 }
-
-var contextData = make(map[*Context]map[string]any)
 
 // NewContext creates a new Context from go's http.ResponseWriter and
 // http.Request. It also takes a variadic list of handlers. This is useful for
@@ -83,10 +83,11 @@ func NewContextWithNode(res http.ResponseWriter, req *http.Request, firstHandler
 		bodyWriter: res,
 
 		currentHandlerNode: &HandlerNode{
-			Method:                  All,
-			HandlersAndTransformers: []any{},
-			Next:                    firstHandlerNode,
+			Method: All,
+			Next:   firstHandlerNode,
 		},
+
+		associatedValues: map[string]any{},
 
 		doneHandlers: []func(){},
 	}
@@ -125,6 +126,14 @@ func NewSubContextWithNode(ctx *Context, firstHandlerNode *HandlerNode) *Context
 // responding handler.
 func (c *Context) Next() {
 	c.next()
+}
+
+func (s Context) Set(key string, value any) {
+	s.associatedValues[key] = value
+}
+
+func (s Context) Get(key string) any {
+	return s.associatedValues[key]
 }
 
 // Method returns the HTTP method of the request.
@@ -358,25 +367,4 @@ func (c *Context) tryUpdateParent() {
 	c.parentContext.ErrorStack = c.ErrorStack
 	c.parentContext.hasWrittenHeaders = c.hasWrittenHeaders
 	c.parentContext.hasWrittenBody = c.hasWrittenBody
-}
-
-// tryMatchHandlerNode attempts to match a handler node's route pattern and http
-// method to the current context. It will return true if the handler node
-// matches, and false if it does not.
-func (c *Context) tryMatchHandlerNode(node *HandlerNode) bool {
-	if node.Method != All && node.Method != c.method {
-		return false
-	}
-
-	if node.Pattern != nil {
-		params, ok := node.Pattern.Match(c.path)
-		if !ok {
-			return false
-		}
-		c.params = params
-	} else {
-		c.params = make(map[string]string)
-	}
-
-	return true
 }

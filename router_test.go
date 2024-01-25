@@ -2,6 +2,7 @@ package navaros_test
 
 import (
 	"errors"
+	"net/http"
 	"net/http/httptest"
 	"testing"
 
@@ -36,20 +37,17 @@ func TestRouterGetWithMiddlewareAndHandler(t *testing.T) {
 	r := httptest.NewRequest("GET", "/a/b/c", nil)
 	w := httptest.NewRecorder()
 
-	type myStr1 string
-	type myStr2 string
-
 	m := navaros.NewRouter()
 	m.Get("/a/b/c", func(ctx *navaros.Context) {
-		navaros.CtxSet(ctx, myStr1("Hello"))
-		navaros.CtxSet(ctx, myStr2("World"))
+		ctx.Set("str1", "Hello")
+		ctx.Set("str2", "World")
 		ctx.Next()
 		ctx.Status = 201
 	})
 	m.Get("/a/b/c", func(ctx *navaros.Context) {
-		str1 := navaros.CtxMustGet[myStr1](ctx)
-		str2 := navaros.CtxMustGet[myStr2](ctx)
-		ctx.Body = string(str1) + " " + string(str2)
+		str1 := ctx.Get("str1").(string)
+		str2 := ctx.Get("str2").(string)
+		ctx.Body = str1 + " " + str2
 	})
 
 	m.ServeHTTP(w, r)
@@ -66,18 +64,15 @@ func TestRouterGetWithMiddlewareAndHandlerInline(t *testing.T) {
 	r := httptest.NewRequest("GET", "/a/b/c", nil)
 	w := httptest.NewRecorder()
 
-	type myStr1 string
-	type myStr2 string
-
 	m := navaros.NewRouter()
 	m.Get("/a/b/c", func(ctx *navaros.Context) {
-		navaros.CtxSet(ctx, myStr1("Hello"))
-		navaros.CtxSet(ctx, myStr2("World"))
+		ctx.Set("str1", "Hello")
+		ctx.Set("str2", "World")
 		ctx.Next()
 	}, func(ctx *navaros.Context) {
 		ctx.Status = 200
-		str1 := navaros.CtxMustGet[myStr1](ctx)
-		str2 := navaros.CtxMustGet[myStr2](ctx)
+		str1 := ctx.Get("str1").(string)
+		str2 := ctx.Get("str2").(string)
 		ctx.Body = string(str1) + " " + string(str2)
 	})
 
@@ -290,5 +285,89 @@ func TestRouterPublicRouteDescriptorsWithSubRouter(t *testing.T) {
 	}
 	if descriptors[3].Pattern.String() != "/a/b/c/a/b/c" {
 		t.Errorf("expected /a/b/c/a/b/c pattern, got %s", descriptors[3].Pattern.String())
+	}
+}
+
+func BenchmarkRouter(b *testing.B) {
+	m := navaros.NewRouter()
+	m.Get("/a/b/c", func(ctx *navaros.Context) {
+		ctx.Status = 201
+		ctx.Body = "Hello World"
+	})
+
+	r := httptest.NewRequest("GET", "/a/b/c", nil)
+	w := httptest.NewRecorder()
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		m.ServeHTTP(w, r)
+	}
+}
+
+func BenchmarkRouterOnHTTPServer(b *testing.B) {
+	m := navaros.NewRouter()
+	m.Get("/a/b/c", func(ctx *navaros.Context) {
+		ctx.Status = 200
+		ctx.Body = "Hello World"
+	})
+
+	s := httptest.NewServer(m)
+	defer s.Close()
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		var res *http.Response
+		var err error
+		b.StartTimer()
+		res, err = http.Get(s.URL + "/a/b/c")
+		b.StopTimer()
+		if err != nil {
+			b.Error(err)
+		}
+		if res.StatusCode != 200 {
+			b.Errorf("expected 200, got %d", res.StatusCode)
+		}
+	}
+}
+
+func BenchmarkGoMux(b *testing.B) {
+	m := http.NewServeMux()
+	m.HandleFunc("/a/b/c", func(res http.ResponseWriter, _ *http.Request) {
+		res.WriteHeader(200)
+		res.Write([]byte("Hello World"))
+	})
+
+	r := httptest.NewRequest("GET", "/a/b/c", nil)
+	w := httptest.NewRecorder()
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		m.ServeHTTP(w, r)
+	}
+}
+
+func BenchmarkGoMuxOnHTTPServer(b *testing.B) {
+	m := http.NewServeMux()
+	m.HandleFunc("/a/b/c", func(res http.ResponseWriter, _ *http.Request) {
+		res.WriteHeader(200)
+		res.Write([]byte("Hello World"))
+	})
+
+	s := httptest.NewServer(m)
+	defer s.Close()
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		var res *http.Response
+		var err error
+		b.StartTimer()
+		res, err = http.Get(s.URL + "/a/b/c")
+		b.StopTimer()
+		if err != nil {
+			b.Error(err)
+		}
+		if res.StatusCode != 200 {
+			b.Errorf("expected 200, got %d", res.StatusCode)
+		}
 	}
 }
