@@ -14,6 +14,10 @@ type Options struct {
 }
 
 func Middleware(options *Options) func(ctx *navaros.Context) {
+	if options == nil {
+		options = &Options{}
+	}
+
 	return func(ctx *navaros.Context) {
 		if !options.disableRequestBodyUnmarshaller {
 			unmarshalRequestBody(ctx)
