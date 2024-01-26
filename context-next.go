@@ -76,7 +76,6 @@ func (c *Context) next() {
 	// If we didn't find a handler function or transformer and we have reached
 	// the end of the chain, we can return early.
 	if c.currentHandlerOrTransformer == nil {
-		println("END OF ROUTER")
 		return
 	}
 
