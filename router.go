@@ -32,6 +32,7 @@ func (r *Router) ServeHTTP(res http.ResponseWriter, req *http.Request) {
 	ctx := NewContextWithNode(res, req, r.firstHandlerNode)
 	ctx.Next()
 	ctx.finalize()
+	ctx.free()
 }
 
 // Handle is for the purpose of taking an existing context, and running it
@@ -40,6 +41,7 @@ func (r *Router) ServeHTTP(res http.ResponseWriter, req *http.Request) {
 func (r *Router) Handle(ctx *Context) {
 	subCtx := NewSubContextWithNode(ctx, r.firstHandlerNode)
 	subCtx.Next()
+	subCtx.free()
 	if subCtx.currentHandlerNode == nil {
 		ctx.Next()
 	}

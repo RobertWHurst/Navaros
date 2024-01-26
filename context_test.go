@@ -131,7 +131,7 @@ func TestContextMethod(t *testing.T) {
 
 	ctx := navaros.NewContext(res, req, nil)
 
-	if ctx.Method() != "GET" {
+	if ctx.Method() != navaros.Get {
 		t.Error("expected method to be GET")
 	}
 }

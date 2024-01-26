@@ -23,10 +23,12 @@ func NewPattern(patternStr string) (*Pattern, error) {
 		return nil, err
 	}
 
-	return &Pattern{
+	pattern := &Pattern{
 		str:    patternStr,
 		regExp: patternRegExp,
-	}, nil
+	}
+
+	return pattern, nil
 }
 
 // Match compares a path to the pattern and returns a map of named parameters
@@ -52,8 +54,8 @@ func (p *Pattern) Match(path string) (RequestParams, bool) {
 }
 
 func (p *Pattern) MatchInto(path string, params *RequestParams) bool {
-	matches := p.regExp.FindStringSubmatch(path)
-	if len(matches) == 0 {
+	matchIndices := p.regExp.FindStringSubmatchIndex(path)
+	if len(matchIndices) == 0 {
 		return false
 	}
 
@@ -68,7 +70,7 @@ func (p *Pattern) MatchInto(path string, params *RequestParams) bool {
 	}
 	for i := 1; i < len(keys); i += 1 {
 		if keys[i] != "" {
-			(*params)[keys[i]] = matches[i]
+			(*params)[keys[i]] = path[matchIndices[i*2]:matchIndices[i*2+1]]
 		}
 	}
 

@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"sync"
 	"time"
 )
 
@@ -73,24 +74,18 @@ func NewContext(res http.ResponseWriter, req *http.Request, handlers ...any) *Co
 // used by libraries which wish to extend or encapsulate the functionality of
 // Navaros. For example, implementing a custom router.
 func NewContextWithNode(res http.ResponseWriter, req *http.Request, firstHandlerNode *HandlerNode) *Context {
-	return &Context{
-		request: req,
+	ctx := contextFromPool()
 
-		method: HTTPMethod(req.Method),
-		path:   req.URL.Path,
+	ctx.request = req
 
-		Headers:    http.Header{},
-		bodyWriter: res,
+	ctx.method = HTTPMethodFromString(req.Method)
+	ctx.path = req.URL.Path
 
-		currentHandlerNode: &HandlerNode{
-			Method: All,
-			Next:   firstHandlerNode,
-		},
+	ctx.bodyWriter = res
 
-		associatedValues: map[string]any{},
+	ctx.currentHandlerNode = firstHandlerNode
 
-		doneHandlers: []func(){},
-	}
+	return ctx
 }
 
 // NewSubContextWithNode creates a new Context from an existing Context. This
@@ -98,47 +93,141 @@ func NewContextWithNode(res http.ResponseWriter, req *http.Request, firstHandler
 // with a different handler chain. Note that when the end of the sub context's
 // handler chain is reached, the parent context's handler chain will continue.
 func NewSubContextWithNode(ctx *Context, firstHandlerNode *HandlerNode) *Context {
-	subContext := &Context{
-		parentContext: ctx,
+	subContext := contextFromPool()
 
-		request: ctx.request,
+	subContext.parentContext = ctx
 
-		method: ctx.method,
-		path:   ctx.path,
-		params: ctx.params,
+	subContext.request = ctx.request
 
-		Status:            ctx.Status,
-		Headers:           ctx.Headers,
-		Cookies:           ctx.Cookies,
-		Body:              ctx.Body,
-		bodyWriter:        ctx.bodyWriter,
-		hasWrittenHeaders: ctx.hasWrittenHeaders,
-		hasWrittenBody:    ctx.hasWrittenBody,
-
-		MaxRequestBodySize: ctx.MaxRequestBodySize,
-
-		Error:           ctx.Error,
-		ErrorStack:      ctx.ErrorStack,
-		FinalError:      ctx.FinalError,
-		FinalErrorStack: ctx.FinalErrorStack,
-
-		requestBodyUnmarshaller: ctx.requestBodyUnmarshaller,
-		responseBodyMarshaller:  ctx.responseBodyMarshaller,
-
-		associatedValues: ctx.associatedValues,
-
-		deadline:     ctx.deadline,
-		doneHandlers: ctx.doneHandlers,
-
-		currentHandlerNode: &HandlerNode{
-			Method:                  All,
-			Pattern:                 nil,
-			HandlersAndTransformers: []any{},
-			Next:                    firstHandlerNode,
-		},
+	subContext.method = ctx.method
+	subContext.path = ctx.path
+	for k, v := range ctx.params {
+		subContext.params[k] = v
 	}
 
+	subContext.Status = ctx.Status
+	for k, v := range ctx.Headers {
+		subContext.Headers[k] = v
+	}
+	subContext.Cookies = ctx.Cookies
+	subContext.Body = ctx.Body
+	subContext.bodyWriter = ctx.bodyWriter
+	subContext.hasWrittenHeaders = ctx.hasWrittenHeaders
+	subContext.hasWrittenBody = ctx.hasWrittenBody
+
+	subContext.MaxRequestBodySize = ctx.MaxRequestBodySize
+
+	subContext.Error = ctx.Error
+	subContext.ErrorStack = ctx.ErrorStack
+	subContext.FinalError = ctx.FinalError
+	subContext.FinalErrorStack = ctx.FinalErrorStack
+
+	subContext.requestBodyUnmarshaller = ctx.requestBodyUnmarshaller
+	subContext.responseBodyMarshaller = ctx.responseBodyMarshaller
+
+	for k, v := range ctx.associatedValues {
+		subContext.associatedValues[k] = v
+	}
+
+	subContext.deadline = ctx.deadline
+	subContext.doneHandlers = append(subContext.doneHandlers[:0], ctx.doneHandlers...)
+
+	subContext.currentHandlerNode = firstHandlerNode
+
 	return subContext
+}
+
+var contextPool = sync.Pool{
+	New: func() any {
+		return &Context{
+			params:           RequestParams{},
+			Headers:          http.Header{},
+			Cookies:          []*http.Cookie{},
+			associatedValues: map[string]any{},
+			doneHandlers:     []func(){},
+		}
+	},
+}
+
+func contextFromPool() *Context {
+	ctx := contextPool.Get().(*Context)
+
+	ctx.parentContext = nil
+
+	ctx.request = nil
+
+	ctx.method = All
+	ctx.path = ""
+	for k := range ctx.params {
+		delete(ctx.params, k)
+	}
+
+	ctx.Status = 0
+	for k := range ctx.Headers {
+		delete(ctx.Headers, k)
+	}
+	ctx.Cookies = ctx.Cookies[:0]
+	ctx.Body = nil
+	ctx.bodyWriter = nil
+	ctx.hasWrittenHeaders = false
+	ctx.hasWrittenBody = false
+
+	ctx.MaxRequestBodySize = 0
+
+	ctx.Error = nil
+	ctx.ErrorStack = ""
+	ctx.FinalError = nil
+	ctx.FinalErrorStack = ""
+
+	ctx.requestBodyUnmarshaller = nil
+	ctx.responseBodyMarshaller = nil
+
+	ctx.currentHandlerNode = nil
+	ctx.matchingHandlerNode = nil
+	ctx.currentHandlerOrTransformerIndex = 0
+	ctx.currentHandlerOrTransformer = nil
+
+	for k := range ctx.associatedValues {
+		delete(ctx.associatedValues, k)
+	}
+
+	ctx.deadline = nil
+	ctx.doneHandlers = ctx.doneHandlers[:0]
+
+	return ctx
+}
+
+func (c *Context) free() {
+	contextPool.Put(c)
+}
+
+// tryUpdateParent updates the parent context with the current context's
+// state. This is called by Next() when the current context is a sub context.
+func (c *Context) tryUpdateParent() {
+	if c.parentContext == nil {
+		return
+	}
+
+	c.parentContext.Status = c.Status
+	c.parentContext.Headers = c.Headers
+	c.parentContext.Cookies = c.Cookies
+	c.parentContext.Body = c.Body
+	c.parentContext.hasWrittenHeaders = c.hasWrittenHeaders
+	c.parentContext.hasWrittenBody = c.hasWrittenBody
+
+	c.parentContext.MaxRequestBodySize = c.MaxRequestBodySize
+
+	c.parentContext.Error = c.Error
+	c.parentContext.ErrorStack = c.ErrorStack
+	c.parentContext.FinalError = c.FinalError
+	c.parentContext.FinalErrorStack = c.FinalErrorStack
+
+	c.parentContext.requestBodyUnmarshaller = c.requestBodyUnmarshaller
+	c.parentContext.responseBodyMarshaller = c.responseBodyMarshaller
+
+	c.parentContext.associatedValues = c.associatedValues
+	c.parentContext.deadline = c.deadline
+	c.parentContext.doneHandlers = c.doneHandlers
 }
 
 // Next calls the next handler in the chain. This is useful for creating
@@ -371,33 +460,4 @@ func (c *Context) marshallResponseBody() (io.Reader, error) {
 		return nil, errors.New("no response body marshaller set. use SetResponseBodyMarshaller() or add body encoder middleware")
 	}
 	return c.responseBodyMarshaller(c.Body)
-}
-
-// tryUpdateParent updates the parent context with the current context's
-// state. This is called by Next() when the current context is a sub context.
-func (c *Context) tryUpdateParent() {
-	if c.parentContext == nil {
-		return
-	}
-
-	c.parentContext.Status = c.Status
-	c.parentContext.Headers = c.Headers
-	c.parentContext.Cookies = c.Cookies
-	c.parentContext.Body = c.Body
-	c.parentContext.hasWrittenHeaders = c.hasWrittenHeaders
-	c.parentContext.hasWrittenBody = c.hasWrittenBody
-
-	c.parentContext.MaxRequestBodySize = c.MaxRequestBodySize
-
-	c.parentContext.Error = c.Error
-	c.parentContext.ErrorStack = c.ErrorStack
-	c.parentContext.FinalError = c.FinalError
-	c.parentContext.FinalErrorStack = c.FinalErrorStack
-
-	c.parentContext.requestBodyUnmarshaller = c.requestBodyUnmarshaller
-	c.parentContext.responseBodyMarshaller = c.responseBodyMarshaller
-
-	c.parentContext.associatedValues = c.associatedValues
-	c.parentContext.deadline = c.deadline
-	c.parentContext.doneHandlers = c.doneHandlers
 }
