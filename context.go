@@ -98,27 +98,47 @@ func NewContextWithNode(res http.ResponseWriter, req *http.Request, firstHandler
 // with a different handler chain. Note that when the end of the sub context's
 // handler chain is reached, the parent context's handler chain will continue.
 func NewSubContextWithNode(ctx *Context, firstHandlerNode *HandlerNode) *Context {
-	finalHandlerNode := firstHandlerNode
-	for finalHandlerNode.Next != nil {
-		finalHandlerNode = finalHandlerNode.Next
-	}
-	finalHandlerNode.Next = &HandlerNode{
-		Method:                  All,
-		HandlersAndTransformers: []any{func(_ *Context) { ctx.Next() }},
+	subContext := &Context{
+		parentContext: ctx,
+
+		request: ctx.request,
+
+		method: ctx.method,
+		path:   ctx.path,
+		params: ctx.params,
+
+		Status:            ctx.Status,
+		Headers:           ctx.Headers,
+		Cookies:           ctx.Cookies,
+		Body:              ctx.Body,
+		bodyWriter:        ctx.bodyWriter,
+		hasWrittenHeaders: ctx.hasWrittenHeaders,
+		hasWrittenBody:    ctx.hasWrittenBody,
+
+		MaxRequestBodySize: ctx.MaxRequestBodySize,
+
+		Error:           ctx.Error,
+		ErrorStack:      ctx.ErrorStack,
+		FinalError:      ctx.FinalError,
+		FinalErrorStack: ctx.FinalErrorStack,
+
+		requestBodyUnmarshaller: ctx.requestBodyUnmarshaller,
+		responseBodyMarshaller:  ctx.responseBodyMarshaller,
+
+		associatedValues: ctx.associatedValues,
+
+		deadline:     ctx.deadline,
+		doneHandlers: ctx.doneHandlers,
+
+		currentHandlerNode: &HandlerNode{
+			Method:                  All,
+			Pattern:                 nil,
+			HandlersAndTransformers: []any{},
+			Next:                    firstHandlerNode,
+		},
 	}
 
-	subContext := *ctx
-	subContext.parentContext = ctx
-	subContext.currentHandlerNode = &HandlerNode{
-		Method:                  All,
-		Pattern:                 nil,
-		HandlersAndTransformers: []any{},
-		Next:                    firstHandlerNode,
-	}
-	subContext.matchingHandlerNode = nil
-	subContext.currentHandlerOrTransformerIndex = 0
-	subContext.currentHandlerOrTransformer = nil
-	return &subContext
+	return subContext
 }
 
 // Next calls the next handler in the chain. This is useful for creating
@@ -362,9 +382,22 @@ func (c *Context) tryUpdateParent() {
 
 	c.parentContext.Status = c.Status
 	c.parentContext.Headers = c.Headers
+	c.parentContext.Cookies = c.Cookies
 	c.parentContext.Body = c.Body
-	c.parentContext.Error = c.Error
-	c.parentContext.ErrorStack = c.ErrorStack
 	c.parentContext.hasWrittenHeaders = c.hasWrittenHeaders
 	c.parentContext.hasWrittenBody = c.hasWrittenBody
+
+	c.parentContext.MaxRequestBodySize = c.MaxRequestBodySize
+
+	c.parentContext.Error = c.Error
+	c.parentContext.ErrorStack = c.ErrorStack
+	c.parentContext.FinalError = c.FinalError
+	c.parentContext.FinalErrorStack = c.FinalErrorStack
+
+	c.parentContext.requestBodyUnmarshaller = c.requestBodyUnmarshaller
+	c.parentContext.responseBodyMarshaller = c.responseBodyMarshaller
+
+	c.parentContext.associatedValues = c.associatedValues
+	c.parentContext.deadline = c.deadline
+	c.parentContext.doneHandlers = c.doneHandlers
 }

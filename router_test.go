@@ -288,6 +288,39 @@ func TestRouterPublicRouteDescriptorsWithSubRouter(t *testing.T) {
 	}
 }
 
+func TestSubRouterCorrectlyProceedsToNextHandler(t *testing.T) {
+	r := httptest.NewRequest("GET", "/b", nil)
+	w := httptest.NewRecorder()
+
+	calledWrongHandler := false
+	calledHandler := false
+
+	m1 := navaros.NewRouter()
+	m1.Get("/a", func(ctx *navaros.Context) {
+		calledWrongHandler = true
+		ctx.Next()
+	})
+
+	m2 := navaros.NewRouter()
+	m2.Get("/b", func(ctx *navaros.Context) {
+		calledHandler = true
+		ctx.Next()
+	})
+
+	m3 := navaros.NewRouter()
+	m3.Use(m1)
+	m3.Use(m2)
+
+	m3.ServeHTTP(w, r)
+
+	if calledWrongHandler {
+		t.Error("expected wrong handler not to be called")
+	}
+	if !calledHandler {
+		t.Error("expected handler to be called")
+	}
+}
+
 func BenchmarkRouter(b *testing.B) {
 	m := navaros.NewRouter()
 	m.Get("/a/b/c", func(ctx *navaros.Context) {

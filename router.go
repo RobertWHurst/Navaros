@@ -40,6 +40,9 @@ func (r *Router) ServeHTTP(res http.ResponseWriter, req *http.Request) {
 func (r *Router) Handle(ctx *Context) {
 	subCtx := NewSubContextWithNode(ctx, r.firstHandlerNode)
 	subCtx.Next()
+	if subCtx.currentHandlerNode == nil {
+		ctx.Next()
+	}
 }
 
 // RouteDescriptors returns a list of all the route descriptors that this

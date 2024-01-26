@@ -50,7 +50,7 @@ func (c *Context) next() {
 				c.currentHandlerNode = c.currentHandlerNode.Next
 			}
 			if c.matchingHandlerNode == nil {
-				return
+				break
 			}
 		}
 
@@ -73,9 +73,10 @@ func (c *Context) next() {
 		c.currentHandlerOrTransformer = nil
 	}
 
-	// If we didn't find a handler function or transformer, check for a final next
-	// function, execute it, and return.
+	// If we didn't find a handler function or transformer and we have reached
+	// the end of the chain, we can return early.
 	if c.currentHandlerOrTransformer == nil {
+		println("END OF ROUTER")
 		return
 	}
 
