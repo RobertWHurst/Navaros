@@ -35,6 +35,7 @@ type Context struct {
 	bodyWriter        http.ResponseWriter
 	hasWrittenHeaders bool
 	hasWrittenBody    bool
+	inhibitResponse   bool
 
 	MaxRequestBodySize int64
 
@@ -225,7 +226,9 @@ func (c *Context) tryUpdateParent() {
 	c.parentContext.requestBodyUnmarshaller = c.requestBodyUnmarshaller
 	c.parentContext.responseBodyMarshaller = c.responseBodyMarshaller
 
-	c.parentContext.associatedValues = c.associatedValues
+	for k, v := range c.associatedValues {
+		c.parentContext.associatedValues[k] = v
+	}
 	c.parentContext.deadline = c.deadline
 	c.parentContext.doneHandlers = c.doneHandlers
 }
@@ -237,12 +240,12 @@ func (c *Context) Next() {
 	c.next()
 }
 
-func (s Context) Set(key string, value any) {
-	s.associatedValues[key] = value
+func (c *Context) Set(key string, value any) {
+	c.associatedValues[key] = value
 }
 
-func (s Context) Get(key string) any {
-	return s.associatedValues[key]
+func (c *Context) Get(key string) any {
+	return c.associatedValues[key]
 }
 
 // Method returns the HTTP method of the request.

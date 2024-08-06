@@ -12,7 +12,7 @@ import (
 
 // finalize is called by the router after all matching handlers have processed
 // the request. It is responsible for writing the response to the client. For
-// libraries which which to extend or encapsulate the functionality of Navaros,
+// libraries which to extend or encapsulate the functionality of Navaros,
 // Finalize can be called with the CtxFinalize function.
 func (c *Context) finalize() {
 	if c.Error != nil {
@@ -92,14 +92,17 @@ func (c *Context) finalize() {
 		for _, cookie := range c.Cookies {
 			http.SetCookie(c.bodyWriter, cookie)
 		}
-		c.bodyWriter.WriteHeader(c.Status)
+
+		if !c.inhibitResponse {
+			c.bodyWriter.WriteHeader(c.Status)
+		}
 	}
 
 	hasBody := finalBodyReader != nil
 	is100Range := c.Status >= 100 && c.Status < 200
 	is204Or304 := c.Status == 204 || c.Status == 304
 
-	if hasBody {
+	if !c.inhibitResponse && hasBody {
 		if is100Range || is204Or304 {
 			fmt.Printf("Response with status %d has body but no content is expected", c.Status)
 		} else {

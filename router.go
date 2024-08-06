@@ -193,14 +193,14 @@ func (r *Router) bind(isPublic bool, method HTTPMethod, path string, handlersAnd
 			continue
 		} else if _, ok := handlerOrTransformer.(Handler); ok {
 			continue
+		} else if _, ok := handlerOrTransformer.(HandlerFunc); ok {
+			continue
 		} else if _, ok := handlerOrTransformer.(func(*Context)); ok {
 			continue
 		}
 
-		panic(
-			"invalid handler type. Must be a Transformer, Handler, or " +
-				"func(*Context). Got: " + reflect.TypeOf(handlerOrTransformer).String(),
-		)
+		panic("invalid handler type. Must be a Transformer, Handler, or " +
+			"HandlerFunc. Got: " + reflect.TypeOf(handlerOrTransformer).String())
 	}
 
 	hasAddedOwnRouteDescriptor := false

@@ -6,6 +6,9 @@ type Handler interface {
 	Handle(ctx *Context)
 }
 
+// HandlerFunc is a function that can be used as a handler with Navaros.
+type HandlerFunc func(ctx *Context)
+
 // RouterHandler is handled nearly identically to a Handler, but it also
 // provides a list of route descriptors which are collected by the router.
 // These will be merged with the other route descriptors already collected.

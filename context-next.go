@@ -91,6 +91,10 @@ func (c *Context) next() {
 		execWithCtxRecovery(c, func() {
 			currentHandler.Handle(c)
 		})
+	} else if currentHandler, ok := c.currentHandlerOrTransformer.(HandlerFunc); ok {
+		execWithCtxRecovery(c, func() {
+			currentHandler(c)
+		})
 	} else if currentHandler, ok := c.currentHandlerOrTransformer.(func(*Context)); ok {
 		execWithCtxRecovery(c, func() {
 			currentHandler(c)
