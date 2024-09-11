@@ -1,8 +1,9 @@
-<h1 align="center">
-  <!-- TODO: Logo -->
-</h1>
+# Navaros
 
-<p align="center">
+<p>
+  <img src="https://github.com/user-attachments/assets/6a2ef6ff-edb9-4ed9-ad8c-9fff3ec71a41" width="400" />
+</p>
+<p>
   <a href="https://pkg.go.dev/github.com/RobertWHurst/navaros">
     <img src="https://img.shields.io/badge/godoc-reference-blue.svg">
   </a>
@@ -17,13 +18,10 @@
   </a>
 </p>
 
-> Please note that Navaros is still in early development. Any and all feedback
-> and testing is greatly appreciated.
->
 > __If you encounter a bug please [report it][bug-report].__
 
-Navaros is a simple and fast HTTP router for Go. It's designed to be simple to
-use and get out of your way so you can focus on building awesome things.
+_Navaros is a simple and fast HTTP router for Go. It's designed to be simple to
+use and get out of your way so you can focus on building awesome things._
 
 ```go
 import (
