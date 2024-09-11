@@ -1,7 +1,7 @@
 # Navaros
 
 <p>
-  <img src="https://github.com/user-attachments/assets/6a2ef6ff-edb9-4ed9-ad8c-9fff3ec71a41" width="400" />
+  <img src="logo.png" width="400" />
 </p>
 <p>
   <a href="https://pkg.go.dev/github.com/RobertWHurst/navaros">
