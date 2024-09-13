@@ -1,8 +1,9 @@
 # Navaros
 
 <p>
-  <img src="logo.png" width="400" />
+  <img src="logo.png" width="400" align="right" />
 </p>
+
 <p>
   <a href="https://pkg.go.dev/github.com/RobertWHurst/navaros">
     <img src="https://img.shields.io/badge/godoc-reference-blue.svg">
@@ -22,6 +23,9 @@
 
 _Navaros is a simple and fast HTTP router for Go. It's designed to be simple to
 use and get out of your way so you can focus on building awesome things._
+
+<br clear="right">
+<br>
 
 ```go
 import (
