@@ -29,25 +29,25 @@ const (
 
 // HTTPMethodFromString converts a string to an HTTPMethod.
 // If the string is not a valid HTTP method, an error is returned.
-func HTTPMethodFromString(method string) HTTPMethod {
+func HTTPMethodFromString(method string) (HTTPMethod, error) {
 	switch strings.ToUpper(method) {
 	case "ALL", "*":
-		return All
+		return All, nil
 	case "POST":
-		return Post
+		return Post, nil
 	case "GET":
-		return Get
+		return Get, nil
 	case "PUT":
-		return Put
+		return Put, nil
 	case "PATCH":
-		return Patch
+		return Patch, nil
 	case "DELETE":
-		return Delete
+		return Delete, nil
 	case "OPTIONS":
-		return Options
+		return Options, nil
 	case "HEAD":
-		return Head
+		return Head, nil
 	default:
-		panic(errors.New("invalid http method `" + method + "`"))
+		return All, errors.New("invalid http method `" + method + "`")
 	}
 }

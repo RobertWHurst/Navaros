@@ -79,7 +79,12 @@ func NewContextWithNode(res http.ResponseWriter, req *http.Request, firstHandler
 
 	ctx.request = req
 
-	ctx.method = HTTPMethodFromString(req.Method)
+	method, err := HTTPMethodFromString(req.Method)
+	if err != nil {
+		ctx.Error = err
+		return ctx
+	}
+	ctx.method = method
 	ctx.path = req.URL.Path
 
 	ctx.bodyWriter = res
