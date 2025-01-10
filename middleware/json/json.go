@@ -55,6 +55,15 @@ func marshalResponseBody(ctx *navaros.Context) {
 		if from != nil {
 			ctx.Headers.Add("Content-Type", "application/json")
 		}
+		switch str := from.(type) {
+		case E:
+			if ctx.Status == 0 {
+				ctx.Status = 400
+			}
+			from = map[string]string{"error": string(str)}
+		case string:
+			from = map[string]string{"message": str}
+		}
 		jsonBytes, err := json.Marshal(from)
 		if err != nil {
 			return nil, err
