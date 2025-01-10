@@ -38,7 +38,9 @@ func (c *Context) finalize() {
 			marshalledReader, err := c.marshallResponseBody()
 			if err != nil {
 				c.Status = 500
-				fmt.Printf("Error occurred when marshalling response body: %s", err)
+				if PrintHandlerErrors {
+					fmt.Printf("Error occurred when marshalling response body: %s", err)
+				}
 			} else {
 				finalBodyReader = marshalledReader
 			}
