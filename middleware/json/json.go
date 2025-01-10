@@ -55,19 +55,51 @@ func marshalResponseBody(ctx *navaros.Context) {
 		if from != nil {
 			ctx.Headers.Add("Content-Type", "application/json")
 		}
-		switch str := from.(type) {
-		case E:
+
+		switch v := from.(type) {
+
+		case []FieldError:
 			if ctx.Status == 0 {
 				ctx.Status = 400
 			}
-			from = map[string]string{"error": string(str)}
+			from = M{
+				"error":  "Validation error",
+				"fields": genFieldsField(v),
+			}
+
+		case FieldError:
+			if ctx.Status == 0 {
+				ctx.Status = 400
+			}
+			from = M{
+				"error":  "Validation error",
+				"fields": genFieldsField([]FieldError{v}),
+			}
+
+		case Error:
+			if ctx.Status == 0 {
+				ctx.Status = 400
+			}
+			from = M{"error": string(v)}
+
 		case string:
-			from = map[string]string{"message": str}
+			from = M{"message": v}
 		}
+
 		jsonBytes, err := json.Marshal(from)
 		if err != nil {
 			return nil, err
 		}
 		return bytes.NewBuffer(jsonBytes), nil
 	})
+}
+
+func genFieldsField(errors []FieldError) []M {
+	var fields []M
+	for _, err := range errors {
+		field := M{}
+		field[err.Field] = err.Error
+		fields = append(fields, field)
+	}
+	return fields
 }
