@@ -441,7 +441,7 @@ func (c *Context) Deadline() (time.Time, bool) {
 // Done added for compatibility with go's context.Context. Alias for
 // UntilFinish(). Done is part of the go context.Context interface.
 func (c *Context) Done() <-chan struct{} {
-	doneChan := make(chan struct{})
+	doneChan := make(chan struct{}, 1)
 	c.doneHandlers = append(c.doneHandlers, func() {
 		doneChan <- struct{}{}
 	})
