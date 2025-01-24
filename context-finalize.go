@@ -22,9 +22,18 @@ func (c *Context) finalize() {
 		}
 	}
 
-	var redirect *Redirect
 	var finalBodyReader io.Reader
-	if !c.hasWrittenBody && c.Body != nil {
+
+	if bodyReader, ok := c.Body.(io.ReadCloser); ok {
+		finalBodyReader = bodyReader
+		defer bodyReader.Close()
+	}
+	if bodyReader, ok := c.Body.(io.Reader); ok {
+		finalBodyReader = bodyReader
+	}
+
+	var redirect *Redirect
+	if !c.hasWrittenBody && c.Body != nil && finalBodyReader == nil {
 		switch body := c.Body.(type) {
 		case *Redirect:
 			redirect = body
@@ -36,13 +45,13 @@ func (c *Context) finalize() {
 			finalBodyReader = bytes.NewReader(body)
 		default:
 			marshalledReader, err := c.marshallResponseBody()
-			if err != nil {
+			if err == nil {
+				finalBodyReader = marshalledReader
+			} else {
 				c.Status = 500
 				if PrintHandlerErrors {
 					fmt.Printf("Error occurred when marshalling response body: %s", err)
 				}
-			} else {
-				finalBodyReader = marshalledReader
 			}
 		}
 	}
