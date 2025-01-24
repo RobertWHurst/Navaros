@@ -35,7 +35,7 @@ func TestRouterGetSimpleHandler(t *testing.T) {
 	}
 }
 
-func TestRouterGetStreamHandler(t *testing.T) {
+func TestRouterGetReaderHandler(t *testing.T) {
 	r := httptest.NewRequest("GET", "/a/b/c", nil)
 	w := httptest.NewRecorder()
 
@@ -61,6 +61,64 @@ func TestRouterGetStreamHandler(t *testing.T) {
 	})
 
 	m.ServeHTTP(w, r)
+
+	if w.Code != 201 {
+		t.Error("expected 201")
+	}
+	if w.Body.String() != "Hello World" {
+		t.Error("expected Hello World")
+	}
+}
+
+type readCloser struct {
+	calledClose *bool
+	reader      io.Reader
+}
+
+func (r *readCloser) Read(p []byte) (n int, err error) {
+	return r.reader.Read(p)
+}
+
+func (r *readCloser) Close() error {
+	*r.calledClose = true
+	return nil
+}
+
+func TestRouterGetReadCloserHandler(t *testing.T) {
+	r := httptest.NewRequest("GET", "/a/b/c", nil)
+	w := httptest.NewRecorder()
+
+	falsePtr := false
+	calledClose := &falsePtr
+
+	m := navaros.NewRouter()
+	m.Get("/a/b/c", func(ctx *navaros.Context) {
+		ctx.Status = 201
+
+		reader, writer := io.Pipe()
+		go func() {
+			_, err := writer.Write([]byte("Hello"))
+			if err != nil {
+				t.Error(err)
+			}
+			time.Sleep(100 * time.Millisecond)
+			_, err = writer.Write([]byte(" World"))
+			if err != nil {
+				t.Error(err)
+			}
+			writer.Close()
+		}()
+
+		readCloser := &readCloser{reader: reader, calledClose: calledClose}
+
+		ctx.Body = readCloser
+	})
+
+	m.ServeHTTP(w, r)
+
+	if *calledClose != true {
+		t.Error("expected Close to be called")
+	}
 
 	if w.Code != 201 {
 		t.Error("expected 201")
@@ -404,7 +462,10 @@ func BenchmarkGoMux(b *testing.B) {
 	m := http.NewServeMux()
 	m.HandleFunc("/a/b/c", func(res http.ResponseWriter, _ *http.Request) {
 		res.WriteHeader(200)
-		res.Write([]byte("Hello World"))
+		_, err := res.Write([]byte("Hello World"))
+		if err != nil {
+			b.Error(err)
+		}
 	})
 
 	r := httptest.NewRequest("GET", "/a/b/c", nil)
@@ -420,7 +481,10 @@ func BenchmarkGoMuxOnHTTPServer(b *testing.B) {
 	m := http.NewServeMux()
 	m.HandleFunc("/a/b/c", func(res http.ResponseWriter, _ *http.Request) {
 		res.WriteHeader(200)
-		res.Write([]byte("Hello World"))
+		_, err := res.Write([]byte("Hello World"))
+		if err != nil {
+			b.Error(err)
+		}
 	})
 
 	s := httptest.NewServer(m)

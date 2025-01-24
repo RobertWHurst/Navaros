@@ -26,10 +26,7 @@ func (c *Context) finalize() {
 	var redirect *Redirect
 
 	if !c.hasWrittenBody && c.Body != nil {
-		if bodyReader, ok := c.Body.(io.ReadCloser); ok {
-			finalBodyReader = bodyReader
-			defer bodyReader.Close()
-		} else if bodyReader, ok := c.Body.(io.Reader); ok {
+		if bodyReader, ok := c.Body.(io.Reader); ok {
 			finalBodyReader = bodyReader
 		} else {
 			switch body := c.Body.(type) {
@@ -117,6 +114,9 @@ func (c *Context) finalize() {
 			fmt.Printf("Response with status %d has body but no content is expected", c.Status)
 		} else {
 			_, err := io.Copy(c.bodyWriter, finalBodyReader)
+			if finalBodyReaderCloser, ok := finalBodyReader.(io.Closer); ok {
+				finalBodyReaderCloser.Close()
+			}
 			if err != nil {
 				c.Status = 500
 				fmt.Printf("Error occurred when writing response body: %s", err)
