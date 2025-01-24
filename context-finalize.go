@@ -23,34 +23,33 @@ func (c *Context) finalize() {
 	}
 
 	var finalBodyReader io.Reader
-
-	if bodyReader, ok := c.Body.(io.ReadCloser); ok {
-		finalBodyReader = bodyReader
-		defer bodyReader.Close()
-	}
-	if bodyReader, ok := c.Body.(io.Reader); ok {
-		finalBodyReader = bodyReader
-	}
-
 	var redirect *Redirect
-	if !c.hasWrittenBody && c.Body != nil && finalBodyReader == nil {
-		switch body := c.Body.(type) {
-		case *Redirect:
-			redirect = body
-		case Redirect:
-			redirect = &body
-		case string:
-			finalBodyReader = strings.NewReader(body)
-		case []byte:
-			finalBodyReader = bytes.NewReader(body)
-		default:
-			marshalledReader, err := c.marshallResponseBody()
-			if err == nil {
-				finalBodyReader = marshalledReader
-			} else {
-				c.Status = 500
-				if PrintHandlerErrors {
-					fmt.Printf("Error occurred when marshalling response body: %s", err)
+
+	if !c.hasWrittenBody && c.Body != nil {
+		if bodyReader, ok := c.Body.(io.ReadCloser); ok {
+			finalBodyReader = bodyReader
+			defer bodyReader.Close()
+		} else if bodyReader, ok := c.Body.(io.Reader); ok {
+			finalBodyReader = bodyReader
+		} else {
+			switch body := c.Body.(type) {
+			case *Redirect:
+				redirect = body
+			case Redirect:
+				redirect = &body
+			case string:
+				finalBodyReader = strings.NewReader(body)
+			case []byte:
+				finalBodyReader = bytes.NewReader(body)
+			default:
+				marshalledReader, err := c.marshallResponseBody()
+				if err == nil {
+					finalBodyReader = marshalledReader
+				} else {
+					c.Status = 500
+					if PrintHandlerErrors {
+						fmt.Printf("Error occurred when marshalling response body: %s", err)
+					}
 				}
 			}
 		}

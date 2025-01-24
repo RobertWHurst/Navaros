@@ -1,6 +1,7 @@
 package navaros
 
 import (
+	"context"
 	"crypto/tls"
 	"errors"
 	"io"
@@ -57,6 +58,9 @@ type Context struct {
 	deadline     *time.Time
 	doneHandlers []func()
 }
+
+var _ context.Context = &Context{}
+var _ io.WriteCloser = &Context{}
 
 // NewContext creates a new Context from go's http.ResponseWriter and
 // http.Request. It also takes a variadic list of handlers. This is useful for
@@ -425,6 +429,13 @@ func (c *Context) Write(bytes []byte) (int, error) {
 // is controlled by go's http.ResponseWriter.
 func (c *Context) Flush() {
 	c.bodyWriter.(http.Flusher).Flush()
+}
+
+// Close simply aliases Flush. It's implemented to satisfy the io.Closer
+// interface.
+func (c *Context) Close() error {
+	c.Flush()
+	return nil
 }
 
 // Deadline returns the deadline of the request. Deadline is part of the go

@@ -2,9 +2,11 @@ package navaros_test
 
 import (
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/RobertWHurst/navaros"
 )
@@ -21,6 +23,41 @@ func TestRouterGetSimpleHandler(t *testing.T) {
 	m.Get("/a/b/c", func(ctx *navaros.Context) {
 		ctx.Status = 201
 		ctx.Body = "Hello World"
+	})
+
+	m.ServeHTTP(w, r)
+
+	if w.Code != 201 {
+		t.Error("expected 201")
+	}
+	if w.Body.String() != "Hello World" {
+		t.Error("expected Hello World")
+	}
+}
+
+func TestRouterGetStreamHandler(t *testing.T) {
+	r := httptest.NewRequest("GET", "/a/b/c", nil)
+	w := httptest.NewRecorder()
+
+	m := navaros.NewRouter()
+	m.Get("/a/b/c", func(ctx *navaros.Context) {
+		ctx.Status = 201
+
+		reader, writer := io.Pipe()
+		go func() {
+			_, err := writer.Write([]byte("Hello"))
+			if err != nil {
+				t.Error(err)
+			}
+			time.Sleep(100 * time.Millisecond)
+			_, err = writer.Write([]byte(" World"))
+			if err != nil {
+				t.Error(err)
+			}
+			writer.Close()
+		}()
+
+		ctx.Body = reader
 	})
 
 	m.ServeHTTP(w, r)
