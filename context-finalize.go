@@ -111,15 +111,17 @@ func (c *Context) finalize() {
 
 	if !c.inhibitResponse && hasBody {
 		if is100Range || is204Or304 {
-			fmt.Printf("Response with status %d has body but no content is expected", c.Status)
+			fmt.Printf("response with status %d has body but no content is expected", c.Status)
 		} else {
 			_, err := io.Copy(c.bodyWriter, finalBodyReader)
 			if finalBodyReaderCloser, ok := finalBodyReader.(io.Closer); ok {
-				finalBodyReaderCloser.Close()
+				if err := finalBodyReaderCloser.Close(); err != nil && PrintHandlerErrors {
+					fmt.Printf("Failed to close body read closer: %s", err)
+				}
 			}
 			if err != nil {
 				c.Status = 500
-				fmt.Printf("Error occurred when writing response body: %s", err)
+				fmt.Printf("error occurred when writing response body: %s", err)
 			}
 		}
 	}

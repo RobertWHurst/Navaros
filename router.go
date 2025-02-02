@@ -8,6 +8,11 @@ import (
 
 var PrintHandlerErrors = false
 
+// SetPrintHandlerErrors toggles the printing of handler errors.
+func SetPrintHandlerErrors(enable bool) {
+	PrintHandlerErrors = enable
+}
+
 // Router is the main component of Navaros. It is an HTTP handler that can be
 // used to handle requests, and route them to the appropriate handlers. It
 // implements the http.Handler interface, and can be used as a handler in

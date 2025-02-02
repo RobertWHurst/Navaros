@@ -64,7 +64,7 @@ var _ io.WriteCloser = &Context{}
 
 // NewContext creates a new Context from go's http.ResponseWriter and
 // http.Request. It also takes a variadic list of handlers. This is useful for
-// creating a new Context outside of a router, and can be used by libraries
+// creating a new Context outside a router, and can be used by libraries
 // which wish to extend or encapsulate the functionality of Navaros.
 func NewContext(res http.ResponseWriter, req *http.Request, handlers ...any) *Context {
 	return NewContextWithNode(res, req, &HandlerNode{
@@ -75,7 +75,7 @@ func NewContext(res http.ResponseWriter, req *http.Request, handlers ...any) *Co
 
 // NewContextWithNode creates a new Context from go's http.ResponseWriter and
 // http.Request. It also takes a HandlerNode - a link in a chain of handlers.
-// This is useful for creating a new Context outside of a router, and can be
+// This is useful for creating a new Context outside a router, and can be
 // used by libraries which wish to extend or encapsulate the functionality of
 // Navaros. For example, implementing a custom router.
 func NewContextWithNode(res http.ResponseWriter, req *http.Request, firstHandlerNode *HandlerNode) *Context {
@@ -309,7 +309,7 @@ func (c *Context) RequestTrailers() http.Header {
 	return c.request.Trailer
 }
 
-// RequestCookies returns the value of a request cookie by name. Returns nil
+// RequestCookie returns the value of a request cookie by name. Returns nil
 // if the cookie does not exist.
 func (c *Context) RequestCookie(name string) (*http.Cookie, error) {
 	return c.request.Cookie(name)
@@ -330,10 +330,10 @@ func (c *Context) RequestBodyReader() io.ReadCloser {
 	return http.MaxBytesReader(c.bodyWriter, c.request.Body, maxRequestBodySize)
 }
 
-// Allows middleware to intercept the request body reader and replace it with
-// their own. This is useful transformers that re-write the request body
-// in a streaming fashion. It's also useful for transformers that re-encode
-// the request body.
+// SetRequestBodyReader Allows middleware to intercept the request body reader
+// and replace it with their own. This is useful transformers that re-write the
+// request body in a streaming fashion. It's also useful for transformers that
+// re-encode the request body.
 func (c *Context) SetRequestBodyReader(reader io.Reader) {
 	if readCloser, ok := reader.(io.ReadCloser); ok {
 		c.request.Body = readCloser
@@ -406,7 +406,11 @@ func (c *Context) Request() *http.Request {
 
 // ResponseWriter returns the underlying http.ResponseWriter object.
 func (c *Context) ResponseWriter() http.ResponseWriter {
-	return c.bodyWriter
+	return &ContextResponseWriter{
+		hasWrittenHeaders: &c.hasWrittenHeaders,
+		hasWrittenBody:    &c.hasWrittenBody,
+		bodyWriter:        c.bodyWriter,
+	}
 }
 
 // Write writes bytes to the response body. This is useful for streaming the
@@ -467,7 +471,7 @@ func (c *Context) Err() error {
 }
 
 // Value is a noop for compatibility with go's context.Context.
-func (c *Context) Value(key any) any {
+func (c *Context) Value(any) any {
 	return nil
 }
 
@@ -479,4 +483,26 @@ func (c *Context) marshallResponseBody() (io.Reader, error) {
 		return nil, errors.New("no response body marshaller set. use SetResponseBodyMarshaller() or add body encoder middleware")
 	}
 	return c.responseBodyMarshaller(c.Body)
+}
+
+type ContextResponseWriter struct {
+	hasWrittenHeaders *bool
+	hasWrittenBody    *bool
+	bodyWriter        http.ResponseWriter
+}
+
+var _ http.ResponseWriter = &ContextResponseWriter{}
+
+func (c *ContextResponseWriter) Write(bytes []byte) (int, error) {
+	*c.hasWrittenBody = true
+	return c.bodyWriter.Write(bytes)
+}
+
+func (c *ContextResponseWriter) WriteHeader(status int) {
+	*c.hasWrittenHeaders = true
+	c.bodyWriter.WriteHeader(status)
+}
+
+func (c *ContextResponseWriter) Header() http.Header {
+	return c.bodyWriter.Header()
 }
