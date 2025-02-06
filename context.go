@@ -249,10 +249,12 @@ func (c *Context) Next() {
 	c.next()
 }
 
+// Set attaches a value to the context. It can later be retrieved with Get.
 func (c *Context) Set(key string, value any) {
 	c.associatedValues[key] = value
 }
 
+// Get retrieves a value attached to the context with Set.
 func (c *Context) Get(key string) any {
 	return c.associatedValues[key]
 }

@@ -409,7 +409,9 @@ func TestContextWrite(t *testing.T) {
 	req := httptest.NewRequest("GET", "/a/b/c", nil)
 
 	ctx := navaros.NewContext(res, req, nil)
-	ctx.Write([]byte("test"))
+	if _, err := ctx.Write([]byte("test")); err != nil {
+		t.Error("expected no error")
+	}
 
 	if res.Body.String() != "test" {
 		t.Error("expected body to be test")

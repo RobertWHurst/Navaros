@@ -53,6 +53,10 @@ func (p *Pattern) Match(path string) (RequestParams, bool) {
 	return params, true
 }
 
+// MatchInto takes a path and a request params map and extracts the named
+// parameters from the path into the map if the path matches the pattern. True
+// will also be returned. If the path does not match the pattern, false will be
+// returned, and no changes will be made to the map.
 func (p *Pattern) MatchInto(path string, params *RequestParams) bool {
 	matchIndices := p.regExp.FindStringSubmatchIndex(path)
 	if len(matchIndices) == 0 {
