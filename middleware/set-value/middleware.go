@@ -1,4 +1,4 @@
-package setfn
+package setvalue
 
 import "github.com/RobertWHurst/navaros"
 
