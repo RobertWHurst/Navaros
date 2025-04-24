@@ -399,8 +399,15 @@ func TestContextResponseWriter(t *testing.T) {
 
 	ctx := navaros.NewContext(res, req, nil)
 
-	if ctx.ResponseWriter() != res {
-		t.Error("expected response writer to be the same")
+	resWriter := ctx.ResponseWriter()
+	resWriter.WriteHeader(200)
+	resWriter.Write([]byte("test"))
+
+	if res.Code != 200 {
+		t.Error("expected response code to be 200")
+	}
+	if res.Body.String() != "test" {
+		t.Error("expected response body to be test")
 	}
 }
 
