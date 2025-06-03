@@ -415,6 +415,27 @@ func (c *Context) ResponseWriter() http.ResponseWriter {
 	}
 }
 
+// ResponseStatus returns the HTTP status code that will be sent to the
+// client given the state of the body and status properties. This is useful
+// for middleware that needs to check what the status code will be
+// before the response is finalized.
+func (c *Context) ResponseStatus() int {
+	if c.Error != nil {
+		return http.StatusInternalServerError
+	}
+	if c.Status != 0 {
+		return c.Status
+	}
+	switch c.Body.(type) {
+	case *Redirect, Redirect:
+		return http.StatusFound
+	case string, []byte, io.Reader:
+		return http.StatusOK
+	default:
+		return http.StatusNotFound
+	}
+}
+
 // Write writes bytes to the response body. This is useful for streaming the
 // response body, or for middleware which encodes the response body.
 func (c *Context) Write(bytes []byte) (int, error) {
@@ -455,12 +476,14 @@ func (c *Context) Deadline() (time.Time, bool) {
 	return deadline, ok
 }
 
-// Done added for compatibility with go's context.Context. Alias for
-// UntilFinish(). Done is part of the go context.Context interface.
+// Done added for compatibility with go's context.Context.
+// Done is part of the go context.Context interface. Returns a channel that
+// will be closed once the response has been finalized and sent to the
+// client, or if if the request has been aborted.
 func (c *Context) Done() <-chan struct{} {
 	doneChan := make(chan struct{}, 1)
 	c.doneHandlers = append(c.doneHandlers, func() {
-		doneChan <- struct{}{}
+		close(doneChan)
 	})
 	return doneChan
 }

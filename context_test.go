@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http/httptest"
 	"testing"
@@ -401,13 +402,48 @@ func TestContextResponseWriter(t *testing.T) {
 
 	resWriter := ctx.ResponseWriter()
 	resWriter.WriteHeader(200)
-	resWriter.Write([]byte("test"))
+	_, err := resWriter.Write([]byte("test"))
+	if err != nil {
+		t.Error("expected no error writing to response writer")
+	}
 
 	if res.Code != 200 {
 		t.Error("expected response code to be 200")
 	}
 	if res.Body.String() != "test" {
 		t.Error("expected response body to be test")
+	}
+}
+
+func TestContextResponseStatus(t *testing.T) {
+	res := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/a/b/c", nil)
+
+	ctx := navaros.NewContext(res, req, func(ctx *navaros.Context) {
+		ctx.Body = "test"
+	})
+	ctx.Next()
+
+	if ctx.ResponseStatus() != 200 {
+		t.Error("expected response status to be 200")
+	}
+
+	ctx = navaros.NewContext(res, req, func(ctx *navaros.Context) {
+		// do nothing
+	})
+	ctx.Next()
+
+	if ctx.ResponseStatus() != 404 {
+		t.Error("expected response status to be 404 when no body is set")
+	}
+
+	ctx = navaros.NewContext(res, req, func(ctx *navaros.Context) {
+		ctx.Error = errors.New("test error")
+	})
+	ctx.Next()
+
+	if ctx.ResponseStatus() != 500 {
+		t.Error("expected response status to be 500 when an error is set")
 	}
 }
 
