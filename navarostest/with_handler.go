@@ -12,6 +12,8 @@ import (
 	"github.com/RobertWHurst/navaros"
 )
 
+// WithHandlerRequest defines the options for executing a request against a
+// handler.
 type WithHandlerRequest struct {
 	Method string
 	Path   string
@@ -20,6 +22,12 @@ type WithHandlerRequest struct {
 	Body   []byte
 }
 
+// WithHandler executes a request against a handler and returns the result.
+// It is used to test handlers in isolation, allowing for assertions on the
+// response headers, status codes, and body content.
+//
+// The handler can be a Navaros router or any compatible http.Handler or
+// http.HandlerFunc.
 func WithHandler(t *testing.T, reqOpts *WithHandlerRequest, handler any) WithHandlerResult {
 	req := httptest.NewRequest(reqOpts.Method, reqOpts.Path, bytes.NewReader(reqOpts.Body))
 	res := httptest.NewRecorder()
