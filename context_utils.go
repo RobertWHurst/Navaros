@@ -12,6 +12,12 @@ func CtxFinalize(ctx *Context) {
 	ctx.finalize()
 }
 
+// CtxFree allows libraries to free a context they created manually.
+// This is important, DO NOT FORGET TO CALL THIS IF YOU CREATE A CONTEXT MANUALLY.
+func CtxFree(ctx *Context) {
+	ctx.free()
+}
+
 // CtxSetDeadline sets a deadline for the context. This allows libraries to
 // limit the amount of time a handler can take to process a request.
 func CtxSetDeadline(ctx *Context, deadline time.Time) {
