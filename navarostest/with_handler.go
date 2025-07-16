@@ -2,8 +2,12 @@ package navarostest
 
 import (
 	"bytes"
+	"io"
+	"net/http"
 	"net/http/httptest"
 	"testing"
+	"regexp"
+	"strings"
 
 	"github.com/RobertWHurst/navaros"
 )
