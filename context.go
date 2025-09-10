@@ -55,8 +55,8 @@ type Context struct {
 
 	associatedValues map[string]any
 
-	deadline     *time.Time
-	doneHandlers []func()
+	deadline    *time.Time
+	doneChannel chan struct{}
 }
 
 var _ context.Context = &Context{}
@@ -140,7 +140,7 @@ func NewSubContextWithNode(ctx *Context, firstHandlerNode *HandlerNode) *Context
 	}
 
 	subContext.deadline = ctx.deadline
-	subContext.doneHandlers = append(subContext.doneHandlers[:0], ctx.doneHandlers...)
+	subContext.doneChannel = ctx.doneChannel
 
 	subContext.currentHandlerNode = firstHandlerNode
 
@@ -154,7 +154,6 @@ var contextPool = sync.Pool{
 			Headers:          http.Header{},
 			Cookies:          []*http.Cookie{},
 			associatedValues: map[string]any{},
-			doneHandlers:     []func(){},
 		}
 	},
 }
@@ -202,7 +201,7 @@ func contextFromPool() *Context {
 	}
 
 	ctx.deadline = nil
-	ctx.doneHandlers = ctx.doneHandlers[:0]
+	ctx.doneChannel = nil
 
 	return ctx
 }
@@ -239,7 +238,7 @@ func (c *Context) tryUpdateParent() {
 		c.parentContext.associatedValues[k] = v
 	}
 	c.parentContext.deadline = c.deadline
-	c.parentContext.doneHandlers = c.doneHandlers
+	c.parentContext.doneChannel = c.doneChannel
 }
 
 // Next calls the next handler in the chain. This is useful for creating
@@ -481,11 +480,10 @@ func (c *Context) Deadline() (time.Time, bool) {
 // will be closed once the response has been finalized and sent to the
 // client, or if if the request has been aborted.
 func (c *Context) Done() <-chan struct{} {
-	doneChan := make(chan struct{}, 1)
-	c.doneHandlers = append(c.doneHandlers, func() {
-		close(doneChan)
-	})
-	return doneChan
+	if c.doneChannel == nil {
+		c.doneChannel = make(chan struct{})
+	}
+	return c.doneChannel
 }
 
 // Err returns the final error of the request. Will be nil if the request
