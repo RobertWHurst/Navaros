@@ -4,6 +4,20 @@ import (
 	"time"
 )
 
+// CtxGetParam enables tests to set parameters on a context. This is needed
+// because tests often use NewContext to create a context to use with the
+// handler being tested. Because the context wasn't matched against a real
+// path, it will have no parameters. This function allows tests to
+// set parameters on the context.
+func CtxSetParam(ctx *Context, key, value string) {
+	ctx.params[key] = value
+}
+
+// CtxDeleteParam allows tests to delete a parameter from the context.
+func CtxDeleteParam(ctx *Context, key string) {
+	delete(ctx.params, key)
+}
+
 // CtxFinalize allows libraries to call the finalize method on a context.
 // finalize figures out the final status code, headers, and body for the
 // response. This is normally called by the router, but can be called by
