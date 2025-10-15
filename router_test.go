@@ -54,7 +54,7 @@ func TestRouterGetReaderHandler(t *testing.T) {
 			if err != nil {
 				t.Error(err)
 			}
-			writer.Close()
+			_ = writer.Close()
 		}()
 
 		ctx.Body = reader
@@ -106,7 +106,7 @@ func TestRouterGetReadCloserHandler(t *testing.T) {
 			if err != nil {
 				t.Error(err)
 			}
-			writer.Close()
+			_ = writer.Close()
 		}()
 
 		readCloser := &readCloser{reader: reader, calledClose: calledClose}
