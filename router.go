@@ -180,6 +180,30 @@ func (r *Router) PublicHead(path string, handlersAndTransformers ...any) {
 	r.bind(true, Head, path, handlersAndTransformers...)
 }
 
+// Lookup takes a handler or transformer and looks up what HTTP method and
+// route pattern it is bound to. Returns the method, pattern, and true if found,
+// or empty string, nil, and false if not found.
+func (r *Router) Lookup(handlerOrTransformer any) (HTTPMethod, *Pattern, bool) {
+	targetPtr := reflect.ValueOf(handlerOrTransformer).Pointer()
+
+	currentNode := r.firstHandlerNode
+	for currentNode != nil {
+		for _, h := range currentNode.HandlersAndTransformers {
+			if reflect.ValueOf(h).Pointer() == targetPtr {
+				return currentNode.Method, currentNode.Pattern, true
+			}
+			if router, ok := h.(RouterHandler); ok {
+				if method, pattern, found := router.Lookup(handlerOrTransformer); found {
+					return method, pattern, true
+				}
+			}
+		}
+		currentNode = currentNode.Next
+	}
+
+	return "", nil, false
+}
+
 // bind creates a pattern object from the route pattern as well as a handler
 // node. It then attaches the new link to the end of the router's handler
 // chain.
