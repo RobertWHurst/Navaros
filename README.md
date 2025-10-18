@@ -747,3 +747,5 @@ MIT License - see [LICENSE](LICENSE) for details.
 ## Related Projects
 
 [Velaros](https://github.com/RobertWHurst/Velaros) - WebSocket router built as a companion to Navaros. Uses the same routing patterns and middleware concepts for WebSocket message handling.
+
+[Zephyr](https://github.com/telemetrytv/Zephyr) - Microservice framework that brings HTTP directly to your services. Works seamlessly with Navaros for service-to-service communication and gateway routing.
