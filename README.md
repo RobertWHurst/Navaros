@@ -102,8 +102,8 @@ The context gives handlers everything they need to process a request and build a
 **Storage:** Use `Set` and `Get` to store per-request data. This is useful for passing information between middleware and handlers, such as authenticated user details or request IDs.
 
 ```go
-router.Get("/user/:id", func(ctx *navaros.Context) {
-	ctx.Set("requestID", "abc123")
+router.Use(func(ctx *navaros.Context) {
+	ctx.Set("requestID", generateID())
 	ctx.Next()
 })
 
@@ -182,7 +182,7 @@ Navaros supports fairly powerful route patterns. The following is a list of supp
 
 - Static - `/a/b/c` - Matches the exact path
 - Wildcard - `/a/*/c` - Pattern segments with a single `*` match any path segment
-- Dynamic - `/a/:b/c` - Pattern segments prefixed with `:` match any path segment and the value of this segment from the matched path is available via the `Params` method, and will be filled under a key matching the name of the pattern segment, ie: pattern of `/a/:b/c` will match `/a/1/c` and the value of `b` in the params will be `1`
+- Dynamic - `/a/:b/c` - Pattern segments prefixed with `:` capture values. `/users/:id` matches `/users/123`, and `ctx.Params()["id"]` returns `"123"`
 
 Pattern segments can also be suffixed with additional modifiers.
 
@@ -297,13 +297,11 @@ router.Get("/info", func(ctx *navaros.Context) {
 
 ### Request Body
 
-Request bodies can be accessed as a streaming reader or unmarshalled into Go values. The approach you choose depends on the size of the body and how you need to process it.
+Most APIs use `ctx.UnmarshalRequestBody(&value)` with middleware like JSON, MessagePack, or Protocol Buffers. The middleware reads and decodes the body for you.
 
-**Streaming** with `ctx.RequestBodyReader()` gives you an `io.ReadCloser` for reading the body incrementally. This is ideal for large uploads like file transfers where you don't want to buffer the entire body in memory. You can pipe it directly to a file, database, or other destination. The reader respects `MaxRequestBodySize` limits to prevent memory exhaustion from malicious requests.
+For large uploads like files, use `ctx.RequestBodyReader()` to stream the body without loading it all into memory. The reader respects `MaxRequestBodySize` limits (default 10MB) to prevent memory exhaustion.
 
-**Unmarshalling** with `ctx.UnmarshalRequestBody(&value)` requires middleware to set up the unmarshaller function. The JSON middleware handles this automatically - it buffers the body and decodes it as JSON. This is the simplest approach for structured data like API requests where the entire body fits comfortably in memory.
-
-You can set custom unmarshallers with `ctx.SetRequestBodyUnmarshaller()` for other content types or special parsing requirements. The unmarshaller function receives a pointer to your target value and returns an error if unmarshalling fails. This allows you to support XML, form data, Protocol Buffers, or any other format.
+You can set custom unmarshallers with `ctx.SetRequestBodyUnmarshaller()` for other content types.
 
 ```go
 import "github.com/RobertWHurst/navaros/middleware/json"
@@ -313,12 +311,12 @@ router.Use(json.Middleware(nil))
 router.Post("/users", func(ctx *navaros.Context) {
 	var user User
 	if err := ctx.UnmarshalRequestBody(&user); err != nil {
-		ctx.Status = 400
+		ctx.Status = http.StatusBadRequest
 		ctx.Body = "Invalid request body"
 		return
 	}
 	
-	ctx.Status = 201
+	ctx.Status = http.StatusCreated
 	ctx.Body = user
 })
 
@@ -681,7 +679,9 @@ http.ListenAndServe(":8080", router)
 
 ## Microservices
 
-Navaros is designed to work seamlessly with [Zephyr](https://github.com/telemetrytv/Zephyr), a microservice framework that brings HTTP directly to your services without the complexity of traditional messaging systems.
+Navaros works with [Zephyr](https://github.com/telemetrytv/Zephyr), a microservice framework that routes HTTP requests over message transports like NATS. This lets you write services as regular HTTP handlers while getting service discovery and routing.
+
+**Note:** The examples below require a NATS server. See [NATS documentation](https://nats.io/) for installation.
 
 ### Public vs Private Routes
 
@@ -818,11 +818,17 @@ Context pooling provides performance without complexity. Contexts are reset and 
 
 ## Testing
 
-Test your handlers by creating contexts with test request and response recorders. The context constructor takes any `http.ResponseWriter` and `*http.Request`, so `httptest` types work perfectly.
-
-Run the full test suite with coverage reporting.
+Test your handlers using `httptest` from the standard library. Create a test request, record the response, and assert on the results.
 
 ```go
+import (
+	"net/http"
+	"net/http/httptest"
+	"testing"
+	
+	"github.com/RobertWHurst/navaros"
+)
+
 func TestHandler(t *testing.T) {
 	router := navaros.NewRouter()
 	
@@ -835,7 +841,7 @@ func TestHandler(t *testing.T) {
 	
 	router.ServeHTTP(rec, req)
 	
-	if rec.Code != 200 {
+	if rec.Code != http.StatusOK {
 		t.Errorf("expected 200, got %d", rec.Code)
 	}
 	if rec.Body.String() != "Hello World" {
