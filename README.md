@@ -133,7 +133,7 @@ router.Use(func(ctx *navaros.Context) {
 router.Use("/api/**", func(ctx *navaros.Context) {
 	token := ctx.RequestHeaders().Get("Authorization")
 	if token == "" {
-		ctx.Status = 401
+		ctx.Status = http.StatusUnauthorized
 		ctx.Body = "Unauthorized"
 		return
 	}
@@ -239,7 +239,7 @@ router.Get("/api/users", func(ctx *navaros.Context) {
 router.Post("/api/users", func(ctx *navaros.Context) {
 	var user User
 	ctx.UnmarshalRequestBody(&user)
-	ctx.Status = 201
+	ctx.Status = http.StatusCreated
 	ctx.Body = user
 })
 ```
@@ -256,7 +256,7 @@ router.Get("/users/:id", func(ctx *navaros.Context) {
 	
 	id, err := strconv.Atoi(userID)
 	if err != nil {
-		ctx.Status = 400
+		ctx.Status = http.StatusBadRequest
 		ctx.Body = "Invalid user ID"
 		return
 	}
@@ -330,6 +330,7 @@ router.Post("/upload", func(ctx *navaros.Context) {
 	defer file.Close()
 	
 	io.Copy(file, reader)
+	ctx.Status = http.StatusOK
 	ctx.Body = "File uploaded"
 })
 ```
@@ -348,7 +349,7 @@ Handlers build responses by setting fields on the context. The status code, head
 
 ```go
 router.Get("/set-cookie", func(ctx *navaros.Context) {
-	ctx.Status = 200
+	ctx.Status = http.StatusOK
 	ctx.Headers.Set("Content-Type", "text/plain")
 	ctx.Cookies = append(ctx.Cookies, &http.Cookie{
 		Name:  "session",
@@ -413,7 +414,7 @@ router.Get("/old-path", func(ctx *navaros.Context) {
 })
 
 router.Get("/login", func(ctx *navaros.Context) {
-	ctx.Status = 301
+	ctx.Status = http.StatusMovedPermanently
 	ctx.Body = navaros.Redirect{To: "https://auth.example.com/login"}
 })
 ```
@@ -434,12 +435,12 @@ router.Use(json.Middleware(nil))
 router.Post("/api/users", func(ctx *navaros.Context) {
 	var user User
 	if err := ctx.UnmarshalRequestBody(&user); err != nil {
-		ctx.Status = 400
+		ctx.Status = http.StatusBadRequest
 		ctx.Body = "Invalid JSON"
 		return
 	}
 	
-	ctx.Status = 201
+	ctx.Status = http.StatusCreated
 	ctx.Body = user
 })
 ```
@@ -458,12 +459,12 @@ router.Use(msgpack.Middleware(nil))
 router.Post("/api/users", func(ctx *navaros.Context) {
 	var user User
 	if err := ctx.UnmarshalRequestBody(&user); err != nil {
-		ctx.Status = 400
+		ctx.Status = http.StatusBadRequest
 		ctx.Body = msgpack.Error("Invalid MessagePack")
 		return
 	}
 	
-	ctx.Status = 201
+	ctx.Status = http.StatusCreated
 	ctx.Body = user
 })
 ```
@@ -490,12 +491,12 @@ router.Use(protobuf.Middleware(nil))
 router.Post("/api/users", func(ctx *navaros.Context) {
 	var req userpb.CreateUserRequest
 	if err := ctx.UnmarshalRequestBody(&req); err != nil {
-		ctx.Status = 400
+		ctx.Status = http.StatusBadRequest
 		ctx.Body = "Invalid protobuf"
 		return
 	}
 	
-	ctx.Status = 201
+	ctx.Status = http.StatusCreated
 	ctx.Body = &userpb.CreateUserResponse{
 		Id:   123,
 		Name: req.Name,
@@ -579,14 +580,14 @@ Pattern-specific middleware lets you protect specific routes or route groups. St
 func authMiddleware(ctx *navaros.Context) {
 	token := ctx.RequestHeaders().Get("Authorization")
 	if token == "" {
-		ctx.Status = 401
+		ctx.Status = http.StatusUnauthorized
 		ctx.Body = "Unauthorized"
 		return
 	}
 	
 	user, err := validateToken(token)
 	if err != nil {
-		ctx.Status = 403
+		ctx.Status = http.StatusForbidden
 		ctx.Body = "Forbidden"
 		return
 	}
@@ -615,7 +616,7 @@ func errorHandler(ctx *navaros.Context) {
 	
 	if ctx.Error != nil {
 		log.Printf("Handler error: %v\n%s", ctx.Error, ctx.ErrorStack)
-		ctx.Status = 500
+		ctx.Status = http.StatusInternalServerError
 		ctx.Body = map[string]string{
 			"error": "Internal server error",
 		}
@@ -645,7 +646,7 @@ func corsMiddleware(ctx *navaros.Context) {
 
 func rateLimitMiddleware(ctx *navaros.Context) {
 	if !checkRateLimit(ctx.RequestRemoteAddress()) {
-		ctx.Status = 429
+		ctx.Status = http.StatusTooManyRequests
 		ctx.Body = "Too many requests"
 		return
 	}
@@ -732,7 +733,7 @@ router.PublicGet("/users", func(ctx *navaros.Context) {
 router.PublicPost("/users", func(ctx *navaros.Context) {
     var user User
     ctx.UnmarshalRequestBody(&user)
-    ctx.Status = 201
+    ctx.Status = http.StatusCreated
     ctx.Body = user
 })
 
@@ -755,14 +756,14 @@ router := navaros.NewRouter()
 router.PublicPost("/orders", func(ctx *navaros.Context) {
     // Call user service to verify user exists
     resp, _ := client.Service("user-service").Get("/users/123")
-    if resp.StatusCode == 404 {
-        ctx.Status = 400
+    if resp.StatusCode == http.StatusNotFound {
+        ctx.Status = http.StatusBadRequest
         ctx.Body = "User not found"
         return
     }
     
     // Create order...
-    ctx.Status = 201
+    ctx.Status = http.StatusCreated
 })
 
 service := zephyr.NewService("order-service", natstransport.New(conn), router)
