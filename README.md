@@ -818,7 +818,7 @@ Navaros can be combined with [Velaros](https://github.com/RobertWHurst/Velaros),
 
 ### Mounting WebSocket Routes
 
-Velaros routers are Navaros handlers, so you can mount them directly on any path:
+Velaros routers provide a `Middleware()` method that returns a Navaros handler, allowing you to mount WebSocket routes on any path:
 
 ```go
 import (
@@ -848,8 +848,8 @@ wsRouter.Bind("/chat/message", func(ctx *velaros.Context) {
 	ctx.Reply(ChatResponse{Status: "received"})
 })
 
-// Mount WebSocket router directly as a Navaros handler
-httpRouter.Get("/ws", wsRouter)
+// Mount WebSocket router using Middleware() method
+httpRouter.Get("/ws", wsRouter.Middleware())
 
 http.ListenAndServe(":8080", httpRouter)
 ```
@@ -988,7 +988,7 @@ func NewChatServer() *ChatServer {
 		ctx.Reply(ChatResponse{Status: "sent"})
 	})
 
-	s.httpRouter.Get("/ws", s.wsRouter)
+	s.httpRouter.Get("/ws", s.wsRouter.Middleware())
 
 	return s
 }
