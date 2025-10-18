@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+package test;
+
+option go_package = "github.com/RobertWHurst/navaros/middleware/protobuf";
+
+message TestRequest {
+  string name = 1;
+  int32 value = 2;
+}
+
+message TestResponse {
+  string message = 1;
+  bool success = 2;
+}
