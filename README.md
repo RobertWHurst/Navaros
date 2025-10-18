@@ -41,6 +41,7 @@ A lightweight, flexible HTTP router for Go. Build fast web applications with pow
   - [Error Handling](#error-handling)
   - [Custom Middleware](#custom-middleware)
 - [Integration with HTTP Servers](#integration-with-http-servers)
+- [Microservices](#microservices)
 - [Performance](#performance)
 - [Architecture](#architecture)
 - [Testing](#testing)
@@ -677,6 +678,123 @@ router.Get("/hello", func(ctx *navaros.Context) {
 http.ListenAndServe(":8080", router)
 ```
 
+## Microservices
+
+Navaros is designed to work seamlessly with [Zephyr](https://github.com/telemetrytv/Zephyr), a microservice framework that brings HTTP directly to your services without the complexity of traditional messaging systems.
+
+### Public vs Private Routes
+
+Navaros distinguishes between public and private routes using `Public*()` methods:
+
+- **Public routes** (`PublicGet`, `PublicPost`, etc.) - Accessible through a gateway from external clients
+- **Private routes** (`Get`, `Post`, etc.) - Only accessible via service-to-service communication
+
+```go
+router := navaros.NewRouter()
+
+// Public route - accessible via gateway
+router.PublicGet("/api/users", func(ctx *navaros.Context) {
+    ctx.Body = []User{{Name: "Alice"}}
+})
+
+// Private route - only accessible to other services
+router.Get("/internal/stats", func(ctx *navaros.Context) {
+    ctx.Body = getInternalStats()
+})
+```
+
+### Gateway Pattern
+
+A Zephyr gateway sits at the edge of your service network, routing external HTTP requests to the appropriate services based on their registered routes.
+
+```go
+// Gateway service
+conn, _ := nats.Connect("nats://localhost:4222")
+gateway := zephyr.NewGateway("api-gateway", natstransport.New(conn))
+gateway.Start()
+
+http.ListenAndServe(":8080", gateway)
+```
+
+### Creating Services
+
+Services register themselves with the gateway and handle requests. When using Navaros, public routes are automatically discovered and registered.
+
+```go
+// User service
+router := navaros.NewRouter()
+router.Use(json.Middleware(nil))
+
+router.PublicGet("/users", func(ctx *navaros.Context) {
+    ctx.Body = []User{{ID: 1, Name: "Alice"}}
+})
+
+router.PublicPost("/users", func(ctx *navaros.Context) {
+    var user User
+    ctx.UnmarshalRequestBody(&user)
+    ctx.Status = 201
+    ctx.Body = user
+})
+
+conn, _ := nats.Connect("nats://localhost:4222")
+service := zephyr.NewService("user-service", natstransport.New(conn), router)
+service.Start()
+```
+
+### Service-to-Service Communication
+
+Services can call each other directly using Zephyr's client, which can access both public and private routes.
+
+```go
+// Order service calling user service
+conn, _ := nats.Connect("nats://localhost:4222")
+client := zephyr.NewClient(natstransport.New(conn))
+
+router := navaros.NewRouter()
+
+router.PublicPost("/orders", func(ctx *navaros.Context) {
+    // Call user service to verify user exists
+    resp, _ := client.Service("user-service").Get("/users/123")
+    if resp.StatusCode == 404 {
+        ctx.Status = 400
+        ctx.Body = "User not found"
+        return
+    }
+    
+    // Create order...
+    ctx.Status = 201
+})
+
+service := zephyr.NewService("order-service", natstransport.New(conn), router)
+service.Start()
+```
+
+### Client as Handler
+
+Zephyr clients implement `navaros.Handler`, allowing you to proxy requests from one service to another directly in your routing:
+
+```go
+client := zephyr.NewClient(natstransport.New(conn))
+router := navaros.NewRouter()
+
+// Proxy all /users requests to user-service
+router.PublicGet("/users/**", client.Service("user-service"))
+
+// This service now acts as a proxy/facade
+service := zephyr.NewService("api-facade", natstransport.New(conn), router)
+service.Start()
+```
+
+### Benefits
+
+- **Write services like HTTP servers** - No special message handling code
+- **Automatic service discovery** - Services find each other through the transport
+- **Public/private routes** - Control what's exposed externally vs internally
+- **Standard HTTP** - Use all standard HTTP features (methods, headers, status codes)
+- **Transport agnostic** - Works with NATS, or implement custom transports
+
+For complete documentation, see [Zephyr on GitHub](https://github.com/telemetrytv/Zephyr).
+
 ## Performance
 
 Navaros is designed for high performance with minimal overhead.
@@ -734,11 +852,15 @@ go test -cover ./...
 
 ## Help Welcome
 
-Navaros is open source and welcomes contributions. If you find a bug or have a feature request, please open an issue on GitHub.
-
-Financial support through sponsorship is appreciated and helps maintain the project.
+If you want to support this project with coffee money, it's greatly appreciated.
 
 [![Sponsor](https://img.shields.io/static/v1?label=Sponsor&message=%E2%9D%A4&logo=GitHub&color=%23fe8e86)](https://github.com/sponsors/RobertWHurst)
+
+If you're interested in providing feedback or would like to contribute, please feel free to do so. I recommend first [opening an issue][feature-request] expressing your feedback or intent to contribute a change. From there we can consider your feedback or guide your contribution efforts. Any and all help is greatly appreciated.
+
+Thank you!
+
+[feature-request]: https://github.com/RobertWHurst/Navaros/issues/new?template=feature_request.md
 
 ## License
 
