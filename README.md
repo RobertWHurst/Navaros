@@ -32,6 +32,8 @@ A lightweight, flexible HTTP router for Go. Build fast web applications with pow
   - [Redirects](#redirects)
 - [Built-in Middleware](#built-in-middleware)
   - [JSON Middleware](#json-middleware)
+  - [MessagePack Middleware](#messagepack-middleware)
+  - [Protocol Buffers Middleware](#protocol-buffers-middleware)
   - [Set Middleware Variants](#set-middleware-variants)
 - [Advanced Usage](#advanced-usage)
   - [Nested Routers](#nested-routers)
@@ -52,11 +54,12 @@ A lightweight, flexible HTTP router for Go. Build fast web applications with pow
 - 🔌 **Middleware Support** - Composable middleware chain for request/response processing
 - 🎯 **Powerful Patterns** - Flexible routing with parameters, wildcards, regex constraints, and modifiers
 - 📦 **Body Handling** - Streaming and buffered request/response bodies with unmarshal support
+- 🗂️ **Multiple Formats** - Built-in middleware for JSON, MessagePack, and Protocol Buffers
 - 🛡️ **Panic Recovery** - Built-in handler panic recovery prevents crashes
 - 📋 **Unified Context** - Single context object for request, response, params, and cancellation
 - 🔄 **Context Cancellation** - Implements Go's context interface for cancellable operations
 - 📁 **Nestable Routers** - Modular route organization with sub-routers
-- ⚡ **Zero Dependencies** - Only uses Go standard library
+- ⚡ **Minimal Dependencies** - Core router uses only Go standard library
 - 🧩 **Extensible** - Simple interfaces for custom middleware and handlers
 
 ## Installation
@@ -439,6 +442,67 @@ router.Post("/api/users", func(ctx *navaros.Context) {
 	ctx.Body = user
 })
 ```
+
+### MessagePack Middleware
+
+The MessagePack middleware provides binary serialization support using MessagePack format. It automatically handles request unmarshalling and response marshalling for Content-Type `application/msgpack` or `application/x-msgpack`.
+
+MessagePack is more compact and faster than JSON, making it ideal for high-performance APIs or bandwidth-constrained environments.
+
+```go
+import "github.com/RobertWHurst/navaros/middleware/msgpack"
+
+router.Use(msgpack.Middleware(nil))
+
+router.Post("/api/users", func(ctx *navaros.Context) {
+	var user User
+	if err := ctx.UnmarshalRequestBody(&user); err != nil {
+		ctx.Status = 400
+		ctx.Body = msgpack.Error("Invalid MessagePack")
+		return
+	}
+	
+	ctx.Status = 201
+	ctx.Body = user
+})
+```
+
+Like the JSON middleware, MessagePack middleware supports special response types:
+- `msgpack.Error` - Returns `{"error": "message"}`
+- `msgpack.FieldError` - Returns validation error format
+- `msgpack.M` - Shorthand for `map[string]any`
+
+### Protocol Buffers Middleware
+
+The Protocol Buffers middleware provides efficient binary serialization using Protocol Buffers. It handles Content-Type `application/protobuf` or `application/x-protobuf`.
+
+Protocol Buffers require you to define `.proto` schemas and generate Go code with `protoc`. The middleware works with any `proto.Message` implementation.
+
+```go
+import (
+	"github.com/RobertWHurst/navaros/middleware/protobuf"
+	"your-project/api/userpb"
+)
+
+router.Use(protobuf.Middleware(nil))
+
+router.Post("/api/users", func(ctx *navaros.Context) {
+	var req userpb.CreateUserRequest
+	if err := ctx.UnmarshalRequestBody(&req); err != nil {
+		ctx.Status = 400
+		ctx.Body = "Invalid protobuf"
+		return
+	}
+	
+	ctx.Status = 201
+	ctx.Body = &userpb.CreateUserResponse{
+		Id:   123,
+		Name: req.Name,
+	}
+})
+```
+
+The middleware automatically sets Content-Type headers and validates that request/response bodies implement `proto.Message`.
 
 ### Set Middleware Variants
 
