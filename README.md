@@ -6,7 +6,7 @@ A lightweight, flexible HTTP router for Go. Build fast web applications with pow
 [![Go Report Card](https://goreportcard.com/badge/github.com/RobertWHurst/navaros)](https://goreportcard.com/report/github.com/RobertWHurst/navaros)
 [![CI](https://github.com/RobertWHurst/Navaros/actions/workflows/ci.yml/badge.svg)](https://github.com/RobertWHurst/Navaros/actions/workflows/ci.yml)
 [![Coverage](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/RobertWHurst/dfe4585fccd1ef915602a113e05d9daf/raw/navaros-coverage.json)](https://github.com/RobertWHurst/Navaros/actions/workflows/ci.yml)
-[![GitHub release](https://img.shields.io/github/v/release/RobertWHurst/navaros)](https://github.com/RobertWHurst/Navaros/releases)
+[![GitHub release](https://img.shields.io/github/v/release/RobertWHurst/Navaros)](https://github.com/RobertWHurst/Navaros/releases)
 [![License](https://img.shields.io/github/license/RobertWHurst/Navaros)](LICENSE)
 [![Sponsor](https://img.shields.io/static/v1?label=Sponsor&message=%E2%9D%A4&logo=GitHub&color=%23fe8e86)](https://github.com/sponsors/RobertWHurst)
 
