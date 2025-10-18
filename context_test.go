@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
@@ -489,4 +490,351 @@ func TestContextDeadline(t *testing.T) {
 	if ctxDeadline != deadline {
 		t.Error("expected deadline to be the one provided")
 	}
+}
+
+func TestContextAfterFinalization_Set(t *testing.T) {
+	res := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/test", nil)
+
+	var capturedCtx *navaros.Context
+	ctx := navaros.NewContext(res, req, func(ctx *navaros.Context) {
+		capturedCtx = ctx
+	})
+	ctx.Next()
+	navaros.CtxFinalize(ctx)
+	navaros.CtxFree(ctx)
+
+	defer func() {
+		if r := recover(); r == nil {
+			t.Error("expected panic when using Set() after finalization")
+		} else if r != "context cannot be used after handler returns - handlers must block until all operations complete" {
+			t.Errorf("unexpected panic message: %v", r)
+		}
+	}()
+
+	capturedCtx.Set("key", "value")
+}
+
+func TestContextAfterFinalization_Write(t *testing.T) {
+	res := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/test", nil)
+
+	var capturedCtx *navaros.Context
+	ctx := navaros.NewContext(res, req, func(ctx *navaros.Context) {
+		capturedCtx = ctx
+	})
+	ctx.Next()
+	navaros.CtxFinalize(ctx)
+	navaros.CtxFree(ctx)
+
+	_, err := capturedCtx.Write([]byte("test"))
+	if err == nil {
+		t.Error("expected error when using Write() after finalization")
+	}
+	if err.Error() != "context cannot be used after handler returns - handlers must block until all operations complete" {
+		t.Errorf("unexpected error message: %v", err)
+	}
+}
+
+func TestContextAfterFinalization_Flush(t *testing.T) {
+	res := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/test", nil)
+
+	var capturedCtx *navaros.Context
+	ctx := navaros.NewContext(res, req, func(ctx *navaros.Context) {
+		capturedCtx = ctx
+	})
+	ctx.Next()
+	navaros.CtxFinalize(ctx)
+	navaros.CtxFree(ctx)
+
+	defer func() {
+		if r := recover(); r == nil {
+			t.Error("expected panic when using Flush() after finalization")
+		} else if r != "context cannot be used after handler returns - handlers must block until all operations complete" {
+			t.Errorf("unexpected panic message: %v", r)
+		}
+	}()
+
+	capturedCtx.Flush()
+}
+
+func TestContextAfterFinalization_ResponseWriter(t *testing.T) {
+	res := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/test", nil)
+
+	var capturedCtx *navaros.Context
+	ctx := navaros.NewContext(res, req, func(ctx *navaros.Context) {
+		capturedCtx = ctx
+	})
+	ctx.Next()
+	navaros.CtxFinalize(ctx)
+	navaros.CtxFree(ctx)
+
+	defer func() {
+		if r := recover(); r == nil {
+			t.Error("expected panic when using ResponseWriter() after finalization")
+		} else if r != "context cannot be used after handler returns - handlers must block until all operations complete" {
+			t.Errorf("unexpected panic message: %v", r)
+		}
+	}()
+
+	capturedCtx.ResponseWriter()
+}
+
+func TestContextRequestCookie(t *testing.T) {
+	req := httptest.NewRequest("GET", "/test", nil)
+	req.AddCookie(&http.Cookie{Name: "session", Value: "abc123"})
+	res := httptest.NewRecorder()
+
+	ctx := navaros.NewContext(res, req, func(ctx *navaros.Context) {
+		cookie, err := ctx.RequestCookie("session")
+		if err != nil {
+			t.Errorf("expected cookie, got error: %v", err)
+		}
+		if cookie.Value != "abc123" {
+			t.Errorf("expected cookie value abc123, got %s", cookie.Value)
+		}
+
+		_, err = ctx.RequestCookie("nonexistent")
+		if err == nil {
+			t.Error("expected error for nonexistent cookie")
+		}
+	})
+	ctx.Next()
+}
+
+func TestContextRequestTrailers(t *testing.T) {
+	req := httptest.NewRequest("GET", "/test", nil)
+	req.Trailer = http.Header{"X-Trailer": []string{"value"}}
+	res := httptest.NewRecorder()
+
+	ctx := navaros.NewContext(res, req, func(ctx *navaros.Context) {
+		trailers := ctx.RequestTrailers()
+		if trailers.Get("X-Trailer") != "value" {
+			t.Errorf("expected trailer value, got %s", trailers.Get("X-Trailer"))
+		}
+	})
+	ctx.Next()
+}
+
+func TestContextClose(t *testing.T) {
+	req := httptest.NewRequest("GET", "/test", nil)
+	res := httptest.NewRecorder()
+
+	ctx := navaros.NewContext(res, req, func(ctx *navaros.Context) {
+		err := ctx.Close()
+		if err != nil {
+			t.Errorf("expected no error, got %v", err)
+		}
+	})
+	ctx.Next()
+}
+
+func TestContextDone(t *testing.T) {
+	req := httptest.NewRequest("GET", "/test", nil)
+	res := httptest.NewRecorder()
+
+	ctx := navaros.NewContext(res, req, func(ctx *navaros.Context) {
+		done := ctx.Done()
+		if done == nil {
+			t.Error("expected done channel")
+		}
+	})
+	ctx.Next()
+	navaros.CtxFinalize(ctx)
+
+	select {
+	case <-ctx.Done():
+	default:
+		t.Error("expected done channel to be closed")
+	}
+}
+
+func TestContextErr(t *testing.T) {
+	req := httptest.NewRequest("GET", "/test", nil)
+	res := httptest.NewRecorder()
+
+	ctx := navaros.NewContext(res, req, nil)
+	ctx.Next()
+
+	if ctx.Err() != nil {
+		t.Errorf("expected nil error, got %v", ctx.Err())
+	}
+}
+
+func TestContextValue(t *testing.T) {
+	req := httptest.NewRequest("GET", "/test", nil)
+	res := httptest.NewRecorder()
+
+	ctx := navaros.NewContext(res, req, nil)
+	val := ctx.Value("key")
+	if val != nil {
+		t.Errorf("expected nil value, got %v", val)
+	}
+}
+
+func TestContextResponseWriterHeader(t *testing.T) {
+	req := httptest.NewRequest("GET", "/test", nil)
+	res := httptest.NewRecorder()
+
+	ctx := navaros.NewContext(res, req, func(ctx *navaros.Context) {
+		writer := ctx.ResponseWriter()
+		header := writer.Header()
+		header.Set("X-Test", "value")
+	})
+	ctx.Next()
+	navaros.CtxFinalize(ctx)
+
+	if res.Header().Get("X-Test") != "value" {
+		t.Error("expected header to be set")
+	}
+}
+
+func TestCtxSetParam(t *testing.T) {
+	req := httptest.NewRequest("GET", "/test", nil)
+	res := httptest.NewRecorder()
+
+	ctx := navaros.NewContext(res, req, nil)
+	navaros.CtxSetParam(ctx, "key", "value")
+
+	if ctx.Params().Get("key") != "value" {
+		t.Error("expected param to be set")
+	}
+}
+
+func TestCtxDeleteParam(t *testing.T) {
+	req := httptest.NewRequest("GET", "/test", nil)
+	res := httptest.NewRecorder()
+
+	ctx := navaros.NewContext(res, req, nil)
+	navaros.CtxSetParam(ctx, "key", "value")
+	navaros.CtxDeleteParam(ctx, "key")
+
+	if ctx.Params().Get("key") != "" {
+		t.Error("expected param to be deleted")
+	}
+}
+
+func TestCtxInhibitResponse(t *testing.T) {
+	req := httptest.NewRequest("GET", "/test", nil)
+	res := httptest.NewRecorder()
+
+	ctx := navaros.NewContext(res, req, func(ctx *navaros.Context) {
+		ctx.Status = 201
+		ctx.Body = "test"
+	})
+	navaros.CtxInhibitResponse(ctx)
+	ctx.Next()
+	navaros.CtxFinalize(ctx)
+
+	if res.Body.Len() != 0 {
+		t.Error("expected no body")
+	}
+}
+
+func TestContextUnmarshalRequestBodyNoUnmarshaller(t *testing.T) {
+	req := httptest.NewRequest("GET", "/test", nil)
+	res := httptest.NewRecorder()
+
+	ctx := navaros.NewContext(res, req, func(ctx *navaros.Context) {
+		var data map[string]string
+		err := ctx.UnmarshalRequestBody(&data)
+		if err == nil {
+			t.Error("expected error when no unmarshaller is set")
+		}
+		if err.Error() != "no request body unmarshaller set. use SetRequestBodyUnmarshaller() or add body parser middleware" {
+			t.Errorf("unexpected error message: %v", err)
+		}
+	})
+	ctx.Next()
+}
+
+func TestContextSetRequestBodyReaderWithReadCloser(t *testing.T) {
+	req := httptest.NewRequest("GET", "/test", nil)
+	res := httptest.NewRecorder()
+
+	ctx := navaros.NewContext(res, req, func(ctx *navaros.Context) {
+		reader := io.NopCloser(bytes.NewBufferString("test"))
+		ctx.SetRequestBodyReader(reader)
+		
+		body, err := io.ReadAll(ctx.RequestBodyReader())
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if string(body) != "test" {
+			t.Errorf("expected 'test', got %s", string(body))
+		}
+	})
+	ctx.Next()
+}
+
+func TestContextResponseBodyMarshaller(t *testing.T) {
+	req := httptest.NewRequest("GET", "/test", nil)
+	res := httptest.NewRecorder()
+
+	ctx := navaros.NewContext(res, req, func(ctx *navaros.Context) {
+		ctx.SetResponseBodyMarshaller(func(from any) (io.Reader, error) {
+			data := from.(map[string]string)
+			return bytes.NewBufferString(data["key"]), nil
+		})
+
+		ctx.Body = map[string]string{"key": "value"}
+	})
+	ctx.Next()
+	navaros.CtxFinalize(ctx)
+
+	if res.Body.String() != "value" {
+		t.Errorf("expected 'value', got %s", res.Body.String())
+	}
+}
+
+func TestContextResponseBodyMarshallerError(t *testing.T) {
+	req := httptest.NewRequest("GET", "/test", nil)
+	res := httptest.NewRecorder()
+
+	ctx := navaros.NewContext(res, req, func(ctx *navaros.Context) {
+		ctx.SetResponseBodyMarshaller(func(from any) (io.Reader, error) {
+			return nil, errors.New("marshalling failed")
+		})
+
+		ctx.Body = map[string]string{"key": "value"}
+		ctx.Status = 200
+	})
+	ctx.Next()
+	navaros.CtxFinalize(ctx)
+
+	if res.Code != 500 {
+		t.Errorf("expected status 500, got %d", res.Code)
+	}
+}
+
+func TestContextNewContextWithNodeError(t *testing.T) {
+	req := httptest.NewRequest("INVALID", "/test", nil)
+	res := httptest.NewRecorder()
+
+	ctx := navaros.NewContext(res, req, nil)
+	ctx.Next()
+
+	if ctx.Error == nil {
+		t.Error("expected error for invalid HTTP method")
+	}
+}
+
+
+func TestContextRequestBodyReaderMaxSize(t *testing.T) {
+	req := httptest.NewRequest("GET", "/test", bytes.NewBufferString("test data"))
+	res := httptest.NewRecorder()
+
+	ctx := navaros.NewContext(res, req, func(ctx *navaros.Context) {
+		ctx.MaxRequestBodySize = 4
+
+		reader := ctx.RequestBodyReader()
+		body, err := io.ReadAll(reader)
+		
+		if err == nil && len(body) > 4 {
+			t.Error("expected body to be limited by MaxRequestBodySize")
+		}
+	})
+	ctx.Next()
 }

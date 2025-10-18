@@ -159,54 +159,53 @@ var contextPool = sync.Pool{
 }
 
 func contextFromPool() *Context {
-	ctx := contextPool.Get().(*Context)
-
-	ctx.parentContext = nil
-
-	ctx.request = nil
-
-	ctx.method = All
-	ctx.path = ""
-	for k := range ctx.params {
-		delete(ctx.params, k)
-	}
-
-	ctx.Status = 0
-	for k := range ctx.Headers {
-		delete(ctx.Headers, k)
-	}
-	ctx.Cookies = ctx.Cookies[:0]
-	ctx.Body = nil
-	ctx.bodyWriter = nil
-	ctx.hasWrittenHeaders = false
-	ctx.hasWrittenBody = false
-
-	ctx.MaxRequestBodySize = 0
-
-	ctx.Error = nil
-	ctx.ErrorStack = ""
-	ctx.FinalError = nil
-	ctx.FinalErrorStack = ""
-
-	ctx.requestBodyUnmarshaller = nil
-	ctx.responseBodyMarshaller = nil
-
-	ctx.currentHandlerNode = nil
-	ctx.matchingHandlerNode = nil
-	ctx.currentHandlerOrTransformerIndex = 0
-	ctx.currentHandlerOrTransformer = nil
-
-	for k := range ctx.associatedValues {
-		delete(ctx.associatedValues, k)
-	}
-
-	ctx.deadline = nil
-	ctx.doneChannel = nil
-
-	return ctx
+	return contextPool.Get().(*Context)
 }
 
 func (c *Context) free() {
+	c.parentContext = nil
+
+	c.request = nil
+
+	c.method = All
+	c.path = ""
+	for k := range c.params {
+		delete(c.params, k)
+	}
+
+	c.Status = 0
+	for k := range c.Headers {
+		delete(c.Headers, k)
+	}
+	c.Cookies = c.Cookies[:0]
+	c.Body = nil
+	c.bodyWriter = nil
+	c.hasWrittenHeaders = false
+	c.hasWrittenBody = false
+	c.inhibitResponse = false
+
+	c.MaxRequestBodySize = 0
+
+	c.Error = nil
+	c.ErrorStack = ""
+	c.FinalError = nil
+	c.FinalErrorStack = ""
+
+	c.requestBodyUnmarshaller = nil
+	c.responseBodyMarshaller = nil
+
+	c.currentHandlerNode = nil
+	c.matchingHandlerNode = nil
+	c.currentHandlerOrTransformerIndex = 0
+	c.currentHandlerOrTransformer = nil
+
+	for k := range c.associatedValues {
+		delete(c.associatedValues, k)
+	}
+
+	c.deadline = nil
+	c.doneChannel = nil
+
 	contextPool.Put(c)
 }
 
@@ -250,6 +249,9 @@ func (c *Context) Next() {
 
 // Set attaches a value to the context. It can later be retrieved with Get.
 func (c *Context) Set(key string, value any) {
+	if c.bodyWriter == nil {
+		panic("context cannot be used after handler returns - handlers must block until all operations complete")
+	}
 	c.associatedValues[key] = value
 }
 
@@ -407,6 +409,9 @@ func (c *Context) Request() *http.Request {
 
 // ResponseWriter returns the underlying http.ResponseWriter object.
 func (c *Context) ResponseWriter() http.ResponseWriter {
+	if c.bodyWriter == nil {
+		panic("context cannot be used after handler returns - handlers must block until all operations complete")
+	}
 	return &ContextResponseWriter{
 		hasWrittenHeaders: &c.hasWrittenHeaders,
 		hasWrittenBody:    &c.hasWrittenBody,
@@ -438,6 +443,9 @@ func (c *Context) ResponseStatus() int {
 // Write writes bytes to the response body. This is useful for streaming the
 // response body, or for middleware which encodes the response body.
 func (c *Context) Write(bytes []byte) (int, error) {
+	if c.bodyWriter == nil {
+		return 0, errors.New("context cannot be used after handler returns - handlers must block until all operations complete")
+	}
 	c.hasWrittenBody = true
 
 	if !c.hasWrittenHeaders {
@@ -454,6 +462,9 @@ func (c *Context) Write(bytes []byte) (int, error) {
 // Flush sends any bytes buffered in the response body to the client. Buffering
 // is controlled by go's http.ResponseWriter.
 func (c *Context) Flush() {
+	if c.bodyWriter == nil {
+		panic("context cannot be used after handler returns - handlers must block until all operations complete")
+	}
 	c.bodyWriter.(http.Flusher).Flush()
 }
 

@@ -505,3 +505,349 @@ func BenchmarkGoMuxOnHTTPServer(b *testing.B) {
 		}
 	}
 }
+func TestRouterPost(t *testing.T) {
+	router := navaros.NewRouter()
+	called := false
+	router.Post("/test", func(ctx *navaros.Context) {
+		called = true
+		ctx.Status = 200
+	})
+
+	req := httptest.NewRequest("POST", "/test", nil)
+	res := httptest.NewRecorder()
+	router.ServeHTTP(res, req)
+
+	if !called {
+		t.Error("expected handler to be called")
+	}
+	if res.Code != 200 {
+		t.Errorf("expected 200, got %d", res.Code)
+	}
+}
+
+func TestRouterPut(t *testing.T) {
+	router := navaros.NewRouter()
+	called := false
+	router.Put("/test", func(ctx *navaros.Context) {
+		called = true
+		ctx.Status = 200
+	})
+
+	req := httptest.NewRequest("PUT", "/test", nil)
+	res := httptest.NewRecorder()
+	router.ServeHTTP(res, req)
+
+	if !called {
+		t.Error("expected handler to be called")
+	}
+}
+
+func TestRouterPatch(t *testing.T) {
+	router := navaros.NewRouter()
+	called := false
+	router.Patch("/test", func(ctx *navaros.Context) {
+		called = true
+		ctx.Status = 200
+	})
+
+	req := httptest.NewRequest("PATCH", "/test", nil)
+	res := httptest.NewRecorder()
+	router.ServeHTTP(res, req)
+
+	if !called {
+		t.Error("expected handler to be called")
+	}
+}
+
+func TestRouterDelete(t *testing.T) {
+	router := navaros.NewRouter()
+	called := false
+	router.Delete("/test", func(ctx *navaros.Context) {
+		called = true
+		ctx.Status = 200
+	})
+
+	req := httptest.NewRequest("DELETE", "/test", nil)
+	res := httptest.NewRecorder()
+	router.ServeHTTP(res, req)
+
+	if !called {
+		t.Error("expected handler to be called")
+	}
+}
+
+func TestRouterOptions(t *testing.T) {
+	router := navaros.NewRouter()
+	called := false
+	router.Options("/test", func(ctx *navaros.Context) {
+		called = true
+		ctx.Status = 200
+	})
+
+	req := httptest.NewRequest("OPTIONS", "/test", nil)
+	res := httptest.NewRecorder()
+	router.ServeHTTP(res, req)
+
+	if !called {
+		t.Error("expected handler to be called")
+	}
+}
+
+func TestRouterHead(t *testing.T) {
+	router := navaros.NewRouter()
+	called := false
+	router.Head("/test", func(ctx *navaros.Context) {
+		called = true
+		ctx.Status = 200
+	})
+
+	req := httptest.NewRequest("HEAD", "/test", nil)
+	res := httptest.NewRecorder()
+	router.ServeHTTP(res, req)
+
+	if !called {
+		t.Error("expected handler to be called")
+	}
+}
+
+func TestRouterAll(t *testing.T) {
+	router := navaros.NewRouter()
+	called := false
+	router.All("/test", func(ctx *navaros.Context) {
+		called = true
+		ctx.Status = 200
+	})
+
+	methods := []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"}
+	for _, method := range methods {
+		called = false
+		req := httptest.NewRequest(method, "/test", nil)
+		res := httptest.NewRecorder()
+		router.ServeHTTP(res, req)
+
+		if !called {
+			t.Errorf("expected handler to be called for %s", method)
+		}
+	}
+}
+
+func TestRouterPublicAll(t *testing.T) {
+	router := navaros.NewRouter()
+	router.PublicAll("/test", func(ctx *navaros.Context) {
+		ctx.Status = 200
+	})
+
+	descriptors := router.RouteDescriptors()
+	if len(descriptors) != 1 {
+		t.Errorf("expected 1 descriptor, got %d", len(descriptors))
+	}
+}
+
+func TestRouterPublicPut(t *testing.T) {
+	router := navaros.NewRouter()
+	router.PublicPut("/test", func(ctx *navaros.Context) {
+		ctx.Status = 200
+	})
+
+	req := httptest.NewRequest("PUT", "/test", nil)
+	res := httptest.NewRecorder()
+	router.ServeHTTP(res, req)
+
+	if res.Code != 200 {
+		t.Errorf("expected 200, got %d", res.Code)
+	}
+}
+
+func TestRouterPublicPatch(t *testing.T) {
+	router := navaros.NewRouter()
+	router.PublicPatch("/test", func(ctx *navaros.Context) {
+		ctx.Status = 200
+	})
+
+	req := httptest.NewRequest("PATCH", "/test", nil)
+	res := httptest.NewRecorder()
+	router.ServeHTTP(res, req)
+
+	if res.Code != 200 {
+		t.Errorf("expected 200, got %d", res.Code)
+	}
+}
+
+func TestRouterPublicDelete(t *testing.T) {
+	router := navaros.NewRouter()
+	router.PublicDelete("/test", func(ctx *navaros.Context) {
+		ctx.Status = 200
+	})
+
+	req := httptest.NewRequest("DELETE", "/test", nil)
+	res := httptest.NewRecorder()
+	router.ServeHTTP(res, req)
+
+	if res.Code != 200 {
+		t.Errorf("expected 200, got %d", res.Code)
+	}
+}
+
+func TestRouterPublicOptions(t *testing.T) {
+	router := navaros.NewRouter()
+	router.PublicOptions("/test", func(ctx *navaros.Context) {
+		ctx.Status = 200
+	})
+
+	req := httptest.NewRequest("OPTIONS", "/test", nil)
+	res := httptest.NewRecorder()
+	router.ServeHTTP(res, req)
+
+	if res.Code != 200 {
+		t.Errorf("expected 200, got %d", res.Code)
+	}
+}
+
+func TestRouterPublicHead(t *testing.T) {
+	router := navaros.NewRouter()
+	router.PublicHead("/test", func(ctx *navaros.Context) {
+		ctx.Status = 200
+	})
+
+	req := httptest.NewRequest("HEAD", "/test", nil)
+	res := httptest.NewRecorder()
+	router.ServeHTTP(res, req)
+
+	if res.Code != 200 {
+		t.Errorf("expected 200, got %d", res.Code)
+	}
+}
+
+func TestRouterLookup(t *testing.T) {
+	router := navaros.NewRouter()
+	handler := func(ctx *navaros.Context) {}
+	router.Get("/users/:id", handler)
+
+	method, pattern, found := router.Lookup(handler)
+	if !found {
+		t.Error("expected to find handler")
+	}
+	if method != navaros.Get {
+		t.Errorf("expected GET method, got %s", method)
+	}
+	if pattern.String() != "/users/:id" {
+		t.Errorf("expected /users/:id pattern, got %s", pattern.String())
+	}
+
+	_, _, found = router.Lookup(func(ctx *navaros.Context) {})
+	if found {
+		t.Error("expected not to find nonexistent handler")
+	}
+}
+
+func TestSetPrintHandlerErrors(t *testing.T) {
+	navaros.SetPrintHandlerErrors(false)
+	navaros.SetPrintHandlerErrors(true)
+}
+
+
+func TestRouterNotFound(t *testing.T) {
+	router := navaros.NewRouter()
+	router.Get("/exists", func(ctx *navaros.Context) {
+		ctx.Status = 200
+	})
+
+	req := httptest.NewRequest("GET", "/nonexistent", nil)
+	res := httptest.NewRecorder()
+	router.ServeHTTP(res, req)
+
+	if res.Code != 404 {
+		t.Errorf("expected 404 for nonexistent route, got %d", res.Code)
+	}
+}
+
+func TestRouterMethodNotAllowed(t *testing.T) {
+	router := navaros.NewRouter()
+	router.Get("/test", func(ctx *navaros.Context) {
+		ctx.Status = 200
+	})
+
+	req := httptest.NewRequest("POST", "/test", nil)
+	res := httptest.NewRecorder()
+	router.ServeHTTP(res, req)
+
+	if res.Code != 404 {
+		t.Errorf("expected 404 for method not allowed, got %d", res.Code)
+	}
+}
+
+func TestRouterNestedParams(t *testing.T) {
+	router := navaros.NewRouter()
+	router.Get("/users/:userId/posts/:postId", func(ctx *navaros.Context) {
+		userId := ctx.Params().Get("userId")
+		postId := ctx.Params().Get("postId")
+		
+		if userId != "123" || postId != "456" {
+			t.Errorf("expected userId=123 and postId=456, got userId=%s postId=%s", userId, postId)
+		}
+		ctx.Status = 200
+	})
+
+	req := httptest.NewRequest("GET", "/users/123/posts/456", nil)
+	res := httptest.NewRecorder()
+	router.ServeHTTP(res, req)
+
+	if res.Code != 200 {
+		t.Errorf("expected 200, got %d", res.Code)
+	}
+}
+
+
+func TestRouterMiddlewareShortCircuit(t *testing.T) {
+	router := navaros.NewRouter()
+	handlerCalled := false
+
+	router.Use("/admin/*", func(ctx *navaros.Context) {
+		ctx.Status = 401
+		ctx.Body = "unauthorized"
+	})
+
+	router.Get("/admin/users", func(ctx *navaros.Context) {
+		handlerCalled = true
+		ctx.Status = 200
+	})
+
+	req := httptest.NewRequest("GET", "/admin/users", nil)
+	res := httptest.NewRecorder()
+	router.ServeHTTP(res, req)
+
+	if handlerCalled {
+		t.Error("expected handler not to be called when middleware short-circuits")
+	}
+	if res.Code != 401 {
+		t.Errorf("expected 401, got %d", res.Code)
+	}
+}
+
+func TestRouterPanicRecovery(t *testing.T) {
+	router := navaros.NewRouter()
+	router.Get("/panic", func(ctx *navaros.Context) {
+		panic("test panic")
+	})
+
+	req := httptest.NewRequest("GET", "/panic", nil)
+	res := httptest.NewRecorder()
+	
+	router.ServeHTTP(res, req)
+
+	if res.Code != 500 {
+		t.Errorf("expected 500 after panic, got %d", res.Code)
+	}
+}
+
+func TestRouterLookupNonexistent(t *testing.T) {
+	router := navaros.NewRouter()
+	router.Get("/users", func(ctx *navaros.Context) {})
+
+	nonExistentHandler := func(ctx *navaros.Context) {}
+	_, _, found := router.Lookup(nonExistentHandler)
+
+	if found {
+		t.Error("expected not to find non-existent handler")
+	}
+}
