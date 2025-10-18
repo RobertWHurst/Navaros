@@ -42,6 +42,7 @@ A lightweight, flexible HTTP router for Go. Build fast web applications with pow
   - [Custom Middleware](#custom-middleware)
 - [Integration with HTTP Servers](#integration-with-http-servers)
 - [Microservices](#microservices)
+- [WebSockets](#websockets)
 - [Performance](#performance)
 - [Architecture](#architecture)
 - [Testing](#testing)
@@ -795,6 +796,245 @@ service.Start()
 - **Transport agnostic** - Works with NATS, or implement custom transports
 
 For complete documentation, see [Zephyr on GitHub](https://github.com/telemetrytv/Zephyr).
+
+## WebSockets
+
+Navaros can be combined with [Velaros](https://github.com/RobertWHurst/Velaros), a WebSocket router that brings the same routing and middleware patterns to WebSocket connections. This lets you serve both HTTP and WebSocket traffic from the same server with a consistent API.
+
+**Note:** Velaros cannot be used behind Zephyr services. WebSocket connections require persistent TCP connections that Zephyr's message-based architecture doesn't support. If you need WebSockets in a microservices architecture, either:
+- Use Velaros at a socket gateway that sits in front of your Zephyr services
+- Wait for the release of Eurus, the WebSocket equivalent of Zephyr that will provide service discovery and routing for WebSocket connections
+
+### Mounting WebSocket Routes
+
+Velaros routers are Navaros handlers, so you can mount them directly on any path:
+
+```go
+import (
+	"github.com/RobertWHurst/navaros"
+	"github.com/RobertWHurst/navaros/middleware/json"
+	"github.com/RobertWHurst/velaros"
+	vjson "github.com/RobertWHurst/velaros/middleware/json"
+)
+
+// Create HTTP router
+httpRouter := navaros.NewRouter()
+httpRouter.Use(json.Middleware(nil))
+
+// Create WebSocket router
+wsRouter := velaros.NewRouter()
+wsRouter.Use(vjson.Middleware())
+
+// Add HTTP routes
+httpRouter.Get("/api/users", func(ctx *navaros.Context) {
+	ctx.Body = []User{{Name: "Alice"}}
+})
+
+// Add WebSocket routes
+wsRouter.Bind("/chat/message", func(ctx *velaros.Context) {
+	var msg ChatMessage
+	ctx.Unmarshal(&msg)
+	ctx.Reply(ChatResponse{Status: "received"})
+})
+
+// Mount WebSocket router directly as a Navaros handler
+httpRouter.Get("/ws", wsRouter)
+
+http.ListenAndServe(":8080", httpRouter)
+```
+
+### Shared Patterns and Concepts
+
+Both routers use identical pattern syntax and middleware concepts:
+
+**Routing Patterns:**
+
+```go
+// HTTP routing
+httpRouter.Get("/users/:id", getUserHandler)
+httpRouter.Post("/files/**", uploadHandler)
+
+// WebSocket routing - same pattern syntax
+wsRouter.Bind("/users/:id", getUserMessageHandler)
+wsRouter.Bind("/files/**", fileMessageHandler)
+```
+
+**Middleware:**
+
+```go
+// HTTP middleware
+httpRouter.Use("/admin/**", func(ctx *navaros.Context) {
+	if !authenticated(ctx) {
+		ctx.Status = http.StatusUnauthorized
+		return
+	}
+	ctx.Next()
+})
+
+// WebSocket middleware - same structure
+wsRouter.Use("/admin/**", func(ctx *velaros.Context) {
+	if !authenticated(ctx) {
+		ctx.Send(ErrorResponse{Error: "unauthorized"})
+		return
+	}
+	ctx.Next()
+})
+```
+
+**Context Storage:**
+
+Both routers provide context storage with similar semantics:
+
+```go
+// HTTP: per-request storage (cleared after request completes)
+httpRouter.Use(func(ctx *navaros.Context) {
+	ctx.Set("requestID", generateID())
+	ctx.Next()
+})
+
+// WebSocket: per-message storage (cleared after message processing completes)
+wsRouter.Use(func(ctx *velaros.Context) {
+	ctx.Set("messageID", generateID())
+	ctx.Next()
+})
+
+// WebSocket: per-connection storage (persists for the connection lifetime)
+wsRouter.UseOpen(func(ctx *velaros.Context) {
+	ctx.SetOnSocket("sessionID", generateID())
+})
+```
+
+### Real-Time Applications
+
+Velaros enables real-time features while Navaros handles REST APIs:
+
+```go
+type ChatServer struct {
+	httpRouter *navaros.Router
+	wsRouter   *velaros.Router
+	broadcast  chan ChatMessage
+	clients    sync.Map
+}
+
+func NewChatServer() *ChatServer {
+	s := &ChatServer{
+		httpRouter: navaros.NewRouter(),
+		wsRouter:   velaros.NewRouter(),
+		broadcast:  make(chan ChatMessage, 100),
+	}
+
+	// Start broadcast handler
+	go s.handleBroadcasts()
+
+	// HTTP API for message history
+	s.httpRouter.Get("/api/messages", func(ctx *navaros.Context) {
+		ctx.Body = getMessageHistory()
+	})
+
+	// WebSocket connection setup
+	s.wsRouter.UseOpen(func(ctx *velaros.Context) {
+		socketID := ctx.SocketID()
+		msgChan := make(chan ChatMessage, 10)
+		s.clients.Store(socketID, msgChan)
+	})
+
+	s.wsRouter.UseClose(func(ctx *velaros.Context) {
+		socketID := ctx.SocketID()
+		if ch, ok := s.clients.LoadAndDelete(socketID); ok {
+			close(ch.(chan ChatMessage))
+		}
+	})
+
+	// Listen for broadcast messages and send to client
+	s.wsRouter.Bind("/chat/listen", func(ctx *velaros.Context) {
+		socketID := ctx.SocketID()
+		msgChan, ok := s.clients.Load(socketID)
+		if !ok {
+			return
+		}
+
+		// Handler blocks - continuously send messages to client
+		for {
+			select {
+			case msg := <-msgChan.(chan ChatMessage):
+				if err := ctx.Send(msg); err != nil {
+					return
+				}
+			case <-ctx.Done():
+				return
+			}
+		}
+	})
+
+	// Receive message from client and broadcast
+	s.wsRouter.Bind("/chat/send", func(ctx *velaros.Context) {
+		var msg ChatMessage
+		ctx.Unmarshal(&msg)
+
+		// Send to broadcast channel
+		s.broadcast <- msg
+
+		ctx.Reply(ChatResponse{Status: "sent"})
+	})
+
+	s.httpRouter.Get("/ws", s.wsRouter)
+
+	return s
+}
+
+func (s *ChatServer) handleBroadcasts() {
+	for msg := range s.broadcast {
+		// Send to all connected clients
+		s.clients.Range(func(key, value any) bool {
+			if msgChan, ok := value.(chan ChatMessage); ok {
+				select {
+				case msgChan <- msg:
+				default:
+					// Channel full, skip this client
+				}
+			}
+			return true
+		})
+	}
+}
+
+func (s *ChatServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	s.httpRouter.ServeHTTP(w, r)
+}
+```
+
+### WebSocket Message Routing
+
+While HTTP uses request methods and paths, WebSocket uses message paths for routing. Messages contain a path field that determines which handler processes them:
+
+```javascript
+// Client connects via HTTP upgrade
+const ws = new WebSocket('ws://localhost:8080/ws');
+
+// Once connected, send messages with paths
+ws.send(JSON.stringify({
+	path: '/chat/send',       // Routes to handler
+	id: 'msg-123',            // For request/reply
+	data: {                   // Message payload
+		text: 'Hello!'
+	}
+}));
+
+// Receive responses
+ws.onmessage = (event) => {
+	const msg = JSON.parse(event.data);
+	console.log('Reply to', msg.id, ':', msg.data);
+};
+```
+
+### Benefits of Using Both
+
+- **Consistent API** - Same routing patterns, middleware structure, and context methods
+- **Unified Server** - Serve HTTP and WebSocket from one server on one port
+- **Complementary Features** - REST APIs for CRUD, WebSockets for real-time updates
+- **Type-Safe Communication** - Both support JSON, MessagePack, and Protocol Buffers
+
+For complete Velaros documentation, see [Velaros on GitHub](https://github.com/RobertWHurst/Velaros).
 
 ## Performance
 
