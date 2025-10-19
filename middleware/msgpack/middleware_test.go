@@ -167,7 +167,7 @@ func TestMiddleware_AlternateContentType(t *testing.T) {
 	reqData := testRequest{Name: "test", Value: 42}
 	reqBody, _ := msgpacklib.Marshal(reqData)
 	req := httptest.NewRequest("POST", "/test", bytes.NewReader(reqBody))
-	req.Header.Set("Content-Type", "application/x-msgpack")
+	req.Header.Set("Content-Type", "application/msgpack")
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 

@@ -9,8 +9,8 @@ import (
 )
 
 type Options struct {
-	disableRequestBodyUnmarshaller bool
-	disableResponseBodyMarshaller  bool
+	DisableRequestBodyUnmarshaller bool
+	DisableResponseBodyMarshaller  bool
 }
 
 func Middleware(options *Options) func(ctx *navaros.Context) {
@@ -19,11 +19,11 @@ func Middleware(options *Options) func(ctx *navaros.Context) {
 	}
 
 	return func(ctx *navaros.Context) {
-		if !options.disableRequestBodyUnmarshaller {
+		if !options.DisableRequestBodyUnmarshaller {
 			unmarshalRequestBody(ctx)
 		}
 
-		if !options.disableResponseBodyMarshaller {
+		if !options.DisableResponseBodyMarshaller {
 			marshalResponseBody(ctx)
 		}
 
@@ -33,7 +33,7 @@ func Middleware(options *Options) func(ctx *navaros.Context) {
 
 func unmarshalRequestBody(ctx *navaros.Context) {
 	contentType := ctx.RequestHeaders().Get("Content-Type")
-	if contentType != "application/msgpack" && contentType != "application/x-msgpack" {
+	if contentType != "application/msgpack" {
 		return
 	}
 

@@ -105,7 +105,7 @@ func TestMiddleware_AlternateContentType(t *testing.T) {
 	reqData := &protobuf.TestRequest{Name: "test", Value: 42}
 	reqBody, _ := proto.Marshal(reqData)
 	req := httptest.NewRequest("POST", "/test", bytes.NewReader(reqBody))
-	req.Header.Set("Content-Type", "application/x-protobuf")
+	req.Header.Set("Content-Type", "application/protobuf")
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 

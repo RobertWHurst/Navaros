@@ -66,7 +66,7 @@ A lightweight, flexible HTTP router for Go. Build fast web applications with pow
 - 🚀 **High Performance** - Efficient route matching and context pooling for minimal overhead
 - 🔌 **Middleware Support** - Composable middleware chain for request/response processing
 - 🎯 **Powerful Patterns** - Flexible routing with parameters, wildcards, regex constraints, and modifiers
-- 📦 **Body Handling** - Streaming and buffered request/response bodies with unmarshal support
+- 📦 **Body Handling** - Streaming request/response bodies, with buffering and marshaling via middleware
 - 🗂️ **Multiple Formats** - Built-in middleware for JSON, MessagePack, and Protocol Buffers
 - 🛡️ **Panic Recovery** - Built-in handler panic recovery prevents crashes
 - 📋 **Unified Context** - Single context object for request, response, params, and cancellation
@@ -95,7 +95,7 @@ func main() {
 	router := navaros.NewRouter()
 
 	router.Get("/hello/:name", func(ctx *navaros.Context) {
-		name := ctx.Params()["name"]
+		name := ctx.Params().Get("name")
 		ctx.Body = "Hello, " + name + "!"
 	})
 
@@ -121,7 +121,7 @@ router.Use(func(ctx *navaros.Context) {
 
 router.Get("/user/:id", func(ctx *navaros.Context) {
 	requestID := ctx.Get("requestID").(string)
-	userID := ctx.Params()["id"]
+	userID := ctx.Params().Get("id")
 	ctx.Body = "User " + userID + " (Request: " + requestID + ")"
 })
 ```
@@ -132,7 +132,7 @@ Middleware functions execute before and after handlers in a composable chain. Th
 
 Middleware runs in the order it's registered. Each middleware can perform work before calling `Next()` (pre-processing) and after `Next()` returns (post-processing). This allows middleware to wrap handler execution with setup and teardown logic.
 
-You can register middleware globally to run for all routes, or scope it to specific path patterns. Pattern-specific middleware only runs when the request path matches the pattern.
+You can register middleware globally to run for all routes, or scope it to specific path patterns. When you provide a path to `Use()`, it automatically matches that path and all sub-paths - no need to add `/**` explicitly.
 
 ```go
 router.Use(func(ctx *navaros.Context) {
@@ -142,7 +142,7 @@ router.Use(func(ctx *navaros.Context) {
 	log.Printf("%s %s - %dms", ctx.Method(), ctx.Path(), duration.Milliseconds())
 })
 
-router.Use("/api/**", func(ctx *navaros.Context) {
+router.Use("/api", func(ctx *navaros.Context) {
 	token := ctx.RequestHeaders().Get("Authorization")
 	if token == "" {
 		ctx.Status = http.StatusUnauthorized
@@ -159,25 +159,38 @@ router.Get("/api/users", func(ctx *navaros.Context) {
 
 ### Context Lifecycle
 
-Contexts are pooled and reused for performance. When a handler completes, its context is immediately returned to the pool and may be reused for a different request. This means handlers must block until all operations using the context are complete.
+**Important:** Context objects are pooled and reused for performance. When a handler returns, its context is immediately returned to the pool and may be reused for a different request. This means **handlers must block until all operations using the context are complete**.
 
-**Important:** Do not keep references to contexts after your handler returns. Do not store contexts in struct fields, pass them to goroutines that outlive the handler, or reference them in callbacks that fire after the handler completes. The context becomes invalid the moment your handler returns.
+If you spawn a goroutine or set up a callback that references the context after the handler returns, those operations will fail with an error: `"context cannot be used after handler returns - handlers must block until all operations complete"`.
 
-If you try to use a context after the handler returns, you'll get a clear error message: "context cannot be used after handler returns - handlers must block until all operations complete". This prevents race conditions and use-after-free bugs.
-
-For long-running operations like streaming responses, the handler must block until the stream completes. You can use the context's cancellation support to detect when the client disconnects.
+**Wrong - Don't do this:**
 
 ```go
+// ❌ This will fail - goroutine uses context after handler returns
+router.Get("/async", func(ctx *navaros.Context) {
+	go func() {
+		time.Sleep(time.Second)
+		ctx.Body = "Done" // ERROR: context already returned to pool
+	}()
+	// Handler returns immediately - context is freed
+})
+```
+
+**Right - Handler blocks:**
+
+```go
+// ✓ Correct - handler blocks until operation completes
 router.Get("/stream", func(ctx *navaros.Context) {
 	ctx.Headers.Set("Content-Type", "text/event-stream")
 	
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 	
+	// Handler blocks here, keeping context alive
 	for {
 		select {
 		case <-ctx.Done():
-			return
+			return // Client disconnected, clean exit
 		case <-ticker.C:
 			ctx.Write([]byte("data: ping\n\n"))
 			ctx.Flush()
@@ -185,6 +198,8 @@ router.Get("/stream", func(ctx *navaros.Context) {
 	}
 })
 ```
+
+Handlers only need to block as long as they need to use the context. For typical request/response handlers, this means they return immediately after setting the response. For streaming responses, they block until the stream completes. The key rule: don't return from the handler while operations that use the context are still pending.
 
 ## Routing
 
@@ -194,7 +209,7 @@ Navaros supports fairly powerful route patterns. The following is a list of supp
 
 - Static - `/a/b/c` - Matches the exact path
 - Wildcard - `/a/*/c` - Pattern segments with a single `*` match any path segment
-- Dynamic - `/a/:b/c` - Pattern segments prefixed with `:` capture values. `/users/:id` matches `/users/123`, and `ctx.Params()["id"]` returns `"123"`
+- Dynamic - `/a/:b/c` - Pattern segments prefixed with `:` capture values. `/users/:id` matches `/users/123`, and `ctx.Params().Get("id")` returns `"123"`
 
 Pattern segments can also be suffixed with additional modifiers.
 
@@ -218,15 +233,15 @@ Register more specific patterns before general ones to ensure correct matching.
 
 ```go
 router.Get("/users/:id(\\d+)", func(ctx *navaros.Context) {
-	ctx.Body = "Numeric user ID: " + ctx.Params()["id"]
+	ctx.Body = "Numeric user ID: " + ctx.Params().Get("id")
 })
 
 router.Get("/users/:slug", func(ctx *navaros.Context) {
-	ctx.Body = "User slug: " + ctx.Params()["slug"]
+	ctx.Body = "User slug: " + ctx.Params().Get("slug")
 })
 
 router.Get("/files/:path+", func(ctx *navaros.Context) {
-	ctx.Body = "File path: " + ctx.Params()["path"]
+	ctx.Body = "File path: " + ctx.Params().Get("path")
 })
 ```
 
@@ -264,7 +279,7 @@ Parameters are always strings since they come from the URL path. If you need oth
 
 ```go
 router.Get("/users/:id", func(ctx *navaros.Context) {
-	userID := ctx.Params()["id"]
+	userID := ctx.Params().Get("id")
 	
 	id, err := strconv.Atoi(userID)
 	if err != nil {
@@ -287,7 +302,7 @@ The context provides direct access to all request data. You can read headers, qu
 
 **Query parameters** come from the URL's query string. They're accessed as a `url.Values` map, which handles multiple values for the same parameter.
 
-**Cookies** can be read by name. The context returns the cookie value or an error if the cookie doesn't exist.
+**Cookies** can be read by name. The context returns an `*http.Cookie` and an error if the cookie doesn't exist.
 
 **URL components** like the protocol, host, and path are available directly through the context.
 
@@ -295,12 +310,16 @@ The context provides direct access to all request data. You can read headers, qu
 
 ```go
 router.Get("/info", func(ctx *navaros.Context) {
-	headers := ctx.RequestHeaders().Get("User-Agent")
-	query := ctx.Query().Get("search")
-	cookie, _ := ctx.RequestCookie("session")
+	userAgent := ctx.RequestHeaders().Get("User-Agent")
+	search := ctx.Query().Get("search")
+	
+	sessionCookie, err := ctx.RequestCookie("session")
+	if err == nil {
+		log.Printf("Session: %s", sessionCookie.Value)
+	}
 	
 	if tls := ctx.RequestTLS(); tls != nil {
-		ctx.Body = fmt.Sprintf("Secure connection: %s", tls.Version)
+		ctx.Body = fmt.Sprintf("Secure connection from %s searching for %s", userAgent, search)
 	} else {
 		ctx.Body = "Insecure connection"
 	}
@@ -311,7 +330,7 @@ router.Get("/info", func(ctx *navaros.Context) {
 
 Most APIs use `ctx.UnmarshalRequestBody(&value)` with middleware like JSON, MessagePack, or Protocol Buffers. The middleware reads and decodes the body for you.
 
-For large uploads like files, use `ctx.RequestBodyReader()` to stream the body without loading it all into memory. The reader respects `MaxRequestBodySize` limits (default 10MB) to prevent memory exhaustion.
+For large uploads like files, use `ctx.RequestBodyReader()` to stream the body without loading it all into memory. The reader respects `MaxRequestBodySize` limits (default 10MB) to prevent memory exhaustion. You can change the limit globally with `navaros.MaxRequestBodySize` or per-request with `ctx.MaxRequestBodySize`. Set to `-1` to disable the limit.
 
 You can set custom unmarshallers with `ctx.SetRequestBodyUnmarshaller()` for other content types.
 
@@ -332,7 +351,10 @@ router.Post("/users", func(ctx *navaros.Context) {
 	ctx.Body = user
 })
 
+// Allow larger uploads for this route
 router.Post("/upload", func(ctx *navaros.Context) {
+	ctx.MaxRequestBodySize = 100 * 1024 * 1024 // 100MB
+	
 	reader := ctx.RequestBodyReader()
 	defer reader.Close()
 	
@@ -376,9 +398,9 @@ The response body can be set in several ways depending on your needs. Navaros ha
 
 **Simple bodies** like strings and byte slices are written directly to the response with no additional processing. Set `ctx.Body = "Hello World"` or `ctx.Body = []byte{...}` and Navaros writes it as-is. This is the fastest approach for static content or when you've already formatted the response.
 
-**Structured data** can be set as any Go value like `ctx.Body = User{Name: "Alice"}`. Middleware will marshal it to the appropriate format - the JSON middleware marshals values to JSON. This is the easiest approach for APIs since you just set the body to your response struct and let middleware handle encoding.
+**Structured data** can be set as any Go value like `ctx.Body = User{Name: "Alice"}`. Middleware will marshal it to the appropriate format - the JSON middleware marshals values to JSON by setting a marshaller with `ctx.SetResponseBodyMarshaller()`. This is the easiest approach for APIs since you just set the body to your response struct and let middleware handle encoding.
 
-**Streaming responses** are written by calling `ctx.Write()` in a loop. Each call immediately writes bytes to the client without buffering the entire response. This is essential for large responses like file downloads, server-sent events, or any response that might not fit in memory. Remember that your handler must block until streaming completes - don't start a goroutine that streams after your handler returns.
+**Streaming responses** use `ctx.Write()` to send bytes directly to the client without buffering. The context implements `io.WriteCloser`, making it compatible with standard library functions like `io.Copy(ctx, reader)` for streaming from any source. This is essential for large responses like file downloads or server-sent events that don't fit in memory. Your handler must block until streaming completes.
 
 **io.Reader bodies** like `ctx.Body = file` allow you to set any reader as the response body. Navaros will copy from the reader to the response, closing it if it implements `io.Closer`. This is useful for proxying responses or serving files without loading them entirely into memory.
 
@@ -435,12 +457,22 @@ router.Get("/login", func(ctx *navaros.Context) {
 
 The JSON middleware automatically marshals and unmarshals JSON request and response bodies. It sets up the context's unmarshal and marshal functions to handle JSON encoding.
 
-For requests, it reads the body and provides an unmarshal function that decodes JSON into Go values. For responses, it marshals any non-reader body value to JSON before writing it.
+For requests with `Content-Type: application/json`, it reads the body and provides an unmarshal function that decodes JSON into Go values. For responses, it marshals any non-reader body value to JSON before writing it.
+
+Pass `nil` for default configuration, or use `&json.Options{}` to customize:
+- `DisableRequestBodyUnmarshaller` - Skip setting up request unmarshalling
+- `DisableResponseBodyMarshaller` - Skip setting up response marshalling
 
 ```go
 import "github.com/RobertWHurst/navaros/middleware/json"
 
+// Default configuration
 router.Use(json.Middleware(nil))
+
+// Custom configuration - response marshalling only
+router.Use(json.Middleware(&json.Options{
+	DisableRequestBodyUnmarshaller: true,
+}))
 
 router.Post("/api/users", func(ctx *navaros.Context) {
 	var user User
@@ -457,9 +489,13 @@ router.Post("/api/users", func(ctx *navaros.Context) {
 
 ### MessagePack Middleware
 
-The MessagePack middleware provides binary serialization support using MessagePack format. It automatically handles request unmarshalling and response marshalling for Content-Type `application/msgpack` or `application/x-msgpack`.
+The MessagePack middleware provides binary serialization support using MessagePack format. It automatically handles request unmarshalling and response marshalling for `Content-Type: application/msgpack`.
 
 MessagePack is more compact and faster than JSON, making it ideal for high-performance APIs or bandwidth-constrained environments.
+
+Pass `nil` for default configuration, or use `&msgpack.Options{}` to customize:
+- `DisableRequestBodyUnmarshaller` - Skip setting up request unmarshalling
+- `DisableResponseBodyMarshaller` - Skip setting up response marshalling
 
 ```go
 import "github.com/RobertWHurst/navaros/middleware/msgpack"
@@ -486,9 +522,13 @@ Like the JSON middleware, MessagePack middleware supports special response types
 
 ### Protocol Buffers Middleware
 
-The Protocol Buffers middleware provides efficient binary serialization using Protocol Buffers. It handles Content-Type `application/protobuf` or `application/x-protobuf`.
+The Protocol Buffers middleware provides efficient binary serialization using Protocol Buffers. It handles `Content-Type: application/protobuf`.
 
 Protocol Buffers require you to define `.proto` schemas and generate Go code with `protoc`. The middleware works with any `proto.Message` implementation.
+
+Pass `nil` for default configuration, or use `&protobuf.Options{}` to customize:
+- `DisableRequestBodyUnmarshaller` - Skip setting up request unmarshalling
+- `DisableResponseBodyMarshaller` - Skip setting up response marshalling
 
 ```go
 import (
@@ -518,13 +558,13 @@ The middleware automatically sets Content-Type headers and validates that reques
 
 ### Set Middleware Variants
 
-The Set middleware family lets you store values on the context as middleware. This is useful for setting up common values that multiple handlers need.
+The Set middleware family lets you store values on the context as middleware. This is useful for setting up common values that multiple handlers need. Each variant takes a key and value/function as parameters.
 
-**set** stores static values on every request.
+**set** stores static values on every request - takes a key and value.
 
-**setfn** calls a function on every request and stores the result. This is useful for values that change per request, like request IDs or timestamps.
+**setfn** calls a function on every request and stores the result - takes a key and function. This is useful for values that change per request, like request IDs or timestamps.
 
-**setvalue** dereferences a pointer and stores the value. This is useful when the value might change between requests but you want to capture the current value.
+**setvalue** dereferences a pointer and stores the value - takes a key and pointer. This is useful when the value might change between requests but you want to capture the current value.
 
 ```go
 import (
@@ -539,13 +579,16 @@ router.Use(setfn.Middleware("requestID", func() string {
 	return uuid.New().String()
 }))
 
-config := &Config{MaxItems: 100}
-router.Use(setvalue.Middleware("maxItems", &config.MaxItems))
+maxItems := 100
+router.Use(setvalue.Middleware("maxItems", &maxItems))
+
+// Later, maxItems can be changed and setvalue captures the current value per request
+maxItems = 200
 
 router.Get("/info", func(ctx *navaros.Context) {
 	version := ctx.Get("version").(string)
 	requestID := ctx.Get("requestID").(string)
-	maxItems := ctx.Get("maxItems").(int)
+	maxItems := ctx.Get("maxItems").(int) // Gets the dereferenced int value
 	
 	ctx.Body = fmt.Sprintf("v%s (request: %s, max: %d)", version, requestID, maxItems)
 })
@@ -573,7 +616,7 @@ apiRouter.Get("/posts", func(ctx *navaros.Context) {
 
 mainRouter := navaros.NewRouter()
 mainRouter.Use(loggingMiddleware)
-mainRouter.Use("/api/**", apiRouter)
+mainRouter.Use("/api", apiRouter)
 
 mainRouter.Get("/", func(ctx *navaros.Context) {
 	ctx.Body = "Welcome"
@@ -606,7 +649,7 @@ func authMiddleware(ctx *navaros.Context) {
 	ctx.Next()
 }
 
-router.Use("/api/**", authMiddleware)
+router.Use("/api", authMiddleware)
 
 router.Get("/api/profile", func(ctx *navaros.Context) {
 	user := ctx.Get("user").(*User)
@@ -849,7 +892,7 @@ wsRouter.Bind("/chat/message", func(ctx *velaros.Context) {
 })
 
 // Mount WebSocket router using Middleware() method
-httpRouter.Get("/ws", wsRouter.Middleware())
+httpRouter.Use("/ws", wsRouter.Middleware())
 
 http.ListenAndServe(":8080", httpRouter)
 ```
@@ -874,7 +917,7 @@ wsRouter.Bind("/files/**", fileMessageHandler)
 
 ```go
 // HTTP middleware
-httpRouter.Use("/admin/**", func(ctx *navaros.Context) {
+httpRouter.Use("/admin", func(ctx *navaros.Context) {
 	if !authenticated(ctx) {
 		ctx.Status = http.StatusUnauthorized
 		return
@@ -883,7 +926,7 @@ httpRouter.Use("/admin/**", func(ctx *navaros.Context) {
 })
 
 // WebSocket middleware - same structure
-wsRouter.Use("/admin/**", func(ctx *velaros.Context) {
+wsRouter.Use("/admin", func(ctx *velaros.Context) {
 	if !authenticated(ctx) {
 		ctx.Send(ErrorResponse{Error: "unauthorized"})
 		return
@@ -988,7 +1031,7 @@ func NewChatServer() *ChatServer {
 		ctx.Reply(ChatResponse{Status: "sent"})
 	})
 
-	s.httpRouter.Get("/ws", s.wsRouter.Middleware())
+	s.httpRouter.Use("/ws", s.wsRouter.Middleware())
 
 	return s
 }
@@ -1053,9 +1096,11 @@ Navaros is designed for high performance with minimal overhead.
 
 **Context pooling** reuses context objects to reduce allocations. Contexts are reset and returned to a pool after each request.
 
-**Efficient route matching** uses sequential pattern matching. While not as fast as radix trees for many routes, it's simple, predictable, and fast enough for most applications.
+**Pre-built handler chains** are constructed at registration time, not per-request. Each route's middleware and handler sequence is a linked list ready to execute.
 
 **Zero allocations** in hot paths mean Navaros doesn't create garbage during request handling, reducing GC pressure.
+
+**Minimal overhead** from simple, direct code paths. No reflection in request handling, no hidden costs.
 
 ## Architecture
 
