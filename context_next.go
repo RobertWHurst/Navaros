@@ -41,15 +41,15 @@ func (c *Context) next() {
 		//
 		// If we do not have a matching handler node, we will walk the chain
 		// until we find a matching handler node.
-		if c.matchingHandlerNode == nil {
+		if !c.currentHandlerNodeMatches {
 			for c.currentHandlerNode != nil {
 				if c.currentHandlerNode.tryMatch(c) {
-					c.matchingHandlerNode = c.currentHandlerNode
+					c.currentHandlerNodeMatches = true
 					break
 				}
 				c.currentHandlerNode = c.currentHandlerNode.Next
 			}
-			if c.matchingHandlerNode == nil {
+			if !c.currentHandlerNodeMatches {
 				break
 			}
 		}
@@ -58,7 +58,7 @@ func (c *Context) next() {
 		// If there are more than one, we will continue from the same handler node
 		// the next time Next is called. We iterate through the handler functions
 		// and transformers until we have executed all of them.
-		if c.currentHandlerOrTransformerIndex < len(c.matchingHandlerNode.HandlersAndTransformers) {
+		if c.currentHandlerOrTransformerIndex < len(c.currentHandlerNode.HandlersAndTransformers) {
 			c.currentHandlerOrTransformer = c.currentHandlerNode.HandlersAndTransformers[c.currentHandlerOrTransformerIndex]
 			c.currentHandlerOrTransformerIndex += 1
 			break
@@ -67,7 +67,7 @@ func (c *Context) next() {
 		// We only get here if we had a matching handler node, and we have
 		// executed all of it's handlers and transformers. We can now clear the
 		// matching handler node, and continue to the next handler node.
-		c.matchingHandlerNode = nil
+		c.currentHandlerNodeMatches = false
 		c.currentHandlerNode = c.currentHandlerNode.Next
 		c.currentHandlerOrTransformerIndex = 0
 		c.currentHandlerOrTransformer = nil

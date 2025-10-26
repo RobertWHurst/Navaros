@@ -49,7 +49,7 @@ type Context struct {
 	responseBodyMarshaller  func(from any) (io.Reader, error)
 
 	currentHandlerNode               *HandlerNode
-	matchingHandlerNode              *HandlerNode
+	currentHandlerNodeMatches        bool
 	currentHandlerOrTransformerIndex int
 	currentHandlerOrTransformer      any
 
@@ -195,7 +195,7 @@ func (c *Context) free() {
 	c.responseBodyMarshaller = nil
 
 	c.currentHandlerNode = nil
-	c.matchingHandlerNode = nil
+	c.currentHandlerNodeMatches = false
 	c.currentHandlerOrTransformerIndex = 0
 	c.currentHandlerOrTransformer = nil
 
