@@ -104,6 +104,11 @@ func (c *Context) next() {
 	} else {
 		panic(fmt.Sprintf("Unknown handler type: %s", reflect.TypeOf(c.currentHandlerOrTransformer)))
 	}
+
+	c.currentHandlerNodeMatches = false
+	c.currentHandlerNode = nil
+	c.currentHandlerOrTransformerIndex = 0
+	c.currentHandlerOrTransformer = nil
 }
 
 func execWithCtxRecovery(ctx *Context, fn func()) {
