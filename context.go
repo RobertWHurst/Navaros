@@ -256,7 +256,14 @@ func (c *Context) Set(key string, value any) {
 }
 
 // Get retrieves a value attached to the context with Set.
-func (c *Context) Get(key string) any {
+func (c *Context) Get(key string) (any, bool) {
+	v, ok := c.associatedValues[key]
+	return v, ok
+}
+
+// MustGet retrieves a value attached to the context with Set. It panics
+// if the value does not exist.
+func (c *Context) MustGet(key string) any {
 	return c.associatedValues[key]
 }
 
