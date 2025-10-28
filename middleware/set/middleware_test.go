@@ -15,7 +15,7 @@ func TestMiddleware(t *testing.T) {
 	router.Use(set.Middleware("config", map[string]int{"timeout": 30}))
 
 	router.Get("/test", func(ctx *navaros.Context) {
-		version := ctx.Get("apiVersion")
+		version := ctx.MustGet("apiVersion")
 		if version == nil {
 			t.Error("expected apiVersion to be set")
 		}
@@ -23,7 +23,7 @@ func TestMiddleware(t *testing.T) {
 			t.Errorf("expected 'v1', got %v", version)
 		}
 
-		config := ctx.Get("config")
+		config := ctx.MustGet("config")
 		if config == nil {
 			t.Error("expected config to be set")
 		}
@@ -50,14 +50,14 @@ func TestMiddlewareValueDoesNotPersistAcrossRequests(t *testing.T) {
 	router.Use(set.Middleware("counter", 0))
 
 	router.Get("/increment", func(ctx *navaros.Context) {
-		counter := ctx.Get("counter").(int)
+		counter := ctx.MustGet("counter").(int)
 		ctx.Set("counter", counter+1)
 		ctx.Status = http.StatusOK
 		ctx.Body = "incremented"
 	})
 
 	router.Get("/check", func(ctx *navaros.Context) {
-		counter := ctx.Get("counter").(int)
+		counter := ctx.MustGet("counter").(int)
 		if counter != 0 {
 			t.Errorf("expected counter to be 0 (reset), got %d", counter)
 		}

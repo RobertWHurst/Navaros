@@ -140,8 +140,8 @@ func TestRouterGetWithMiddlewareAndHandler(t *testing.T) {
 		ctx.Status = 201
 	})
 	m.Get("/a/b/c", func(ctx *navaros.Context) {
-		str1 := ctx.Get("str1").(string)
-		str2 := ctx.Get("str2").(string)
+		str1 := ctx.MustGet("str1").(string)
+		str2 := ctx.MustGet("str2").(string)
 		ctx.Body = str1 + " " + str2
 	})
 
@@ -166,8 +166,8 @@ func TestRouterGetWithMiddlewareAndHandlerInline(t *testing.T) {
 		ctx.Next()
 	}, func(ctx *navaros.Context) {
 		ctx.Status = 200
-		str1 := ctx.Get("str1").(string)
-		str2 := ctx.Get("str2").(string)
+		str1 := ctx.MustGet("str1").(string)
+		str2 := ctx.MustGet("str2").(string)
 		ctx.Body = string(str1) + " " + string(str2)
 	})
 
@@ -745,7 +745,6 @@ func TestSetPrintHandlerErrors(t *testing.T) {
 	navaros.SetPrintHandlerErrors(true)
 }
 
-
 func TestRouterNotFound(t *testing.T) {
 	router := navaros.NewRouter()
 	router.Get("/exists", func(ctx *navaros.Context) {
@@ -781,7 +780,7 @@ func TestRouterNestedParams(t *testing.T) {
 	router.Get("/users/:userId/posts/:postId", func(ctx *navaros.Context) {
 		userId := ctx.Params().Get("userId")
 		postId := ctx.Params().Get("postId")
-		
+
 		if userId != "123" || postId != "456" {
 			t.Errorf("expected userId=123 and postId=456, got userId=%s postId=%s", userId, postId)
 		}
@@ -796,7 +795,6 @@ func TestRouterNestedParams(t *testing.T) {
 		t.Errorf("expected 200, got %d", res.Code)
 	}
 }
-
 
 func TestRouterMiddlewareShortCircuit(t *testing.T) {
 	router := navaros.NewRouter()
@@ -832,7 +830,7 @@ func TestRouterPanicRecovery(t *testing.T) {
 
 	req := httptest.NewRequest("GET", "/panic", nil)
 	res := httptest.NewRecorder()
-	
+
 	router.ServeHTTP(res, req)
 
 	if res.Code != 500 {

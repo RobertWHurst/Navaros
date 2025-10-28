@@ -120,7 +120,7 @@ router.Use(func(ctx *navaros.Context) {
 })
 
 router.Get("/user/:id", func(ctx *navaros.Context) {
-	requestID := ctx.Get("requestID").(string)
+	requestID := ctx.MustGet("requestID").(string)
 	userID := ctx.Params().Get("id")
 	ctx.Body = "User " + userID + " (Request: " + requestID + ")"
 })
@@ -586,9 +586,9 @@ router.Use(setvalue.Middleware("maxItems", &maxItems))
 maxItems = 200
 
 router.Get("/info", func(ctx *navaros.Context) {
-	version := ctx.Get("version").(string)
-	requestID := ctx.Get("requestID").(string)
-	maxItems := ctx.Get("maxItems").(int) // Gets the dereferenced int value
+	version := ctx.MustGet("version").(string)
+	requestID := ctx.MustGet("requestID").(string)
+	maxItems := ctx.MustGet("maxItems").(int) // Gets the dereferenced int value
 	
 	ctx.Body = fmt.Sprintf("v%s (request: %s, max: %d)", version, requestID, maxItems)
 })
@@ -652,7 +652,7 @@ func authMiddleware(ctx *navaros.Context) {
 router.Use("/api", authMiddleware)
 
 router.Get("/api/profile", func(ctx *navaros.Context) {
-	user := ctx.Get("user").(*User)
+	user := ctx.MustGet("user").(*User)
 	ctx.Body = user
 })
 ```

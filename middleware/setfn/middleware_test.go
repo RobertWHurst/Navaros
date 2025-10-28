@@ -18,7 +18,7 @@ func TestMiddleware(t *testing.T) {
 	}))
 
 	router.Get("/test", func(ctx *navaros.Context) {
-		requestID := ctx.Get("requestID")
+		requestID := ctx.MustGet("requestID")
 		if requestID == nil {
 			t.Error("expected requestID to be set")
 		}
@@ -52,7 +52,7 @@ func TestMiddlewareFunctionCalledPerRequest(t *testing.T) {
 	}))
 
 	router.Get("/test", func(ctx *navaros.Context) {
-		counter := ctx.Get("counter").(int)
+		counter := ctx.MustGet("counter").(int)
 		ctx.Status = http.StatusOK
 		ctx.Body = counter
 	})

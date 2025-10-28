@@ -20,7 +20,7 @@ func TestMiddleware(t *testing.T) {
 	router.Use(setvalue.Middleware("config", config))
 
 	router.Get("/test", func(ctx *navaros.Context) {
-		cfg := ctx.Get("config")
+		cfg := ctx.MustGet("config")
 		if cfg == nil {
 			t.Error("expected config to be set")
 		}
@@ -52,7 +52,7 @@ func TestMiddlewareStoresValueNotPointer(t *testing.T) {
 	router.Use(setvalue.Middleware("timeout", &timeout))
 
 	router.Get("/test", func(ctx *navaros.Context) {
-		val := ctx.Get("timeout").(int)
+		val := ctx.MustGet("timeout").(int)
 		if val != 60 {
 			t.Errorf("expected current dereferenced value 60, got %d", val)
 		}

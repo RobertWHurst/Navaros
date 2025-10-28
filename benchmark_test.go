@@ -61,7 +61,7 @@ func BenchmarkContextGetSet(b *testing.B) {
 	router := navaros.NewRouter()
 	router.Get("/test", func(ctx *navaros.Context) {
 		ctx.Set("key", "value")
-		_ = ctx.Get("key")
+		_ = ctx.MustGet("key")
 		ctx.Status = http.StatusOK
 		ctx.Body = "ok"
 	})
