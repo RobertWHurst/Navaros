@@ -267,6 +267,11 @@ func (c *Context) MustGet(key string) any {
 	return c.associatedValues[key]
 }
 
+// Delete removes a value attached to the context with Set.
+func (c *Context) Delete(key string) {
+	delete(c.associatedValues, key)
+}
+
 // Method returns the HTTP method of the request.
 func (c *Context) Method() HTTPMethod {
 	return c.method
