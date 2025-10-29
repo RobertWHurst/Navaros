@@ -34,7 +34,6 @@ func Middleware(options *Options) func(ctx *navaros.Context) {
 func unmarshalRequestBody(ctx *navaros.Context) {
 	contentType := ctx.RequestHeaders().Get("Content-Type")
 	if contentType != "application/json" {
-		ctx.Next()
 		return
 	}
 
