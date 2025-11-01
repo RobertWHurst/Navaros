@@ -240,13 +240,6 @@ func (c *Context) tryUpdateParent() {
 	c.parentContext.doneChannel = c.doneChannel
 }
 
-// Next calls the next handler in the chain. This is useful for creating
-// middleware style handlers that work on the context before and/or after the
-// responding handler.
-func (c *Context) Next() {
-	c.next()
-}
-
 // Set attaches a value to the context. It can later be retrieved with Get.
 func (c *Context) Set(key string, value any) {
 	if c.bodyWriter == nil {
