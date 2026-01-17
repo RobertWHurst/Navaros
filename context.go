@@ -5,8 +5,10 @@ import (
 	"crypto/tls"
 	"errors"
 	"io"
+	"maps"
 	"net/http"
 	"net/url"
+	"slices"
 	"sync"
 	"time"
 )
@@ -116,10 +118,8 @@ func NewSubContextWithNode(ctx *Context, firstHandlerNode *HandlerNode) *Context
 	}
 
 	subContext.Status = ctx.Status
-	for k, v := range ctx.Headers {
-		subContext.Headers[k] = v
-	}
-	subContext.Cookies = ctx.Cookies
+	subContext.Headers = maps.Clone(ctx.Headers)
+	subContext.Cookies = slices.Clone(ctx.Cookies)
 	subContext.Body = ctx.Body
 	subContext.bodyWriter = ctx.bodyWriter
 	subContext.hasWrittenHeaders = ctx.hasWrittenHeaders
@@ -217,8 +217,8 @@ func (c *Context) tryUpdateParent() {
 	}
 
 	c.parentContext.Status = c.Status
-	c.parentContext.Headers = c.Headers
-	c.parentContext.Cookies = c.Cookies
+	c.parentContext.Headers = maps.Clone(c.Headers)
+	c.parentContext.Cookies = slices.Clone(c.Cookies)
 	c.parentContext.Body = c.Body
 	c.parentContext.hasWrittenHeaders = c.hasWrittenHeaders
 	c.parentContext.hasWrittenBody = c.hasWrittenBody
