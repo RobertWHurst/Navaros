@@ -1,6 +1,10 @@
 package navaros
 
-import "net/http"
+import (
+	"bufio"
+	"net"
+	"net/http"
+)
 
 type ContextResponseWriter struct {
 	hasWrittenHeaders *bool
@@ -9,6 +13,7 @@ type ContextResponseWriter struct {
 }
 
 var _ http.ResponseWriter = &ContextResponseWriter{}
+var _ http.Hijacker = &ContextResponseWriter{}
 
 func (c *ContextResponseWriter) Write(bytes []byte) (int, error) {
 	*c.hasWrittenBody = true
@@ -22,4 +27,12 @@ func (c *ContextResponseWriter) WriteHeader(status int) {
 
 func (c *ContextResponseWriter) Header() http.Header {
 	return c.bodyWriter.Header()
+}
+
+func (c *ContextResponseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	hijacker, ok := c.bodyWriter.(http.Hijacker)
+	if !ok {
+		return nil, nil, http.ErrNotSupported
+	}
+	return hijacker.Hijack()
 }
