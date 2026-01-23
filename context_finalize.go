@@ -128,7 +128,7 @@ func (c *Context) finalize() {
 
 	c.FinalError = c.Error
 	c.FinalErrorStack = c.ErrorStack
-	if c.doneChannel != nil {
-		close(c.doneChannel)
+	if ch := c.doneChannel.Load(); ch != nil {
+		close(*ch)
 	}
 }

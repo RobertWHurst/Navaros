@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -58,7 +59,7 @@ type Context struct {
 	associatedValues map[string]any
 
 	deadline    *time.Time
-	doneChannel chan struct{}
+	doneChannel atomic.Pointer[chan struct{}]
 }
 
 var _ context.Context = &Context{}
@@ -140,7 +141,9 @@ func NewSubContextWithNode(ctx *Context, firstHandlerNode *HandlerNode) *Context
 	}
 
 	subContext.deadline = ctx.deadline
-	subContext.doneChannel = ctx.doneChannel
+	if ch := ctx.doneChannel.Load(); ch != nil {
+		subContext.doneChannel.Store(ch)
+	}
 
 	subContext.currentHandlerNode = firstHandlerNode
 
@@ -204,7 +207,7 @@ func (c *Context) free() {
 	}
 
 	c.deadline = nil
-	c.doneChannel = nil
+	c.doneChannel.Store(nil)
 
 	contextPool.Put(c)
 }
@@ -237,7 +240,9 @@ func (c *Context) tryUpdateParent() {
 		c.parentContext.associatedValues[k] = v
 	}
 	c.parentContext.deadline = c.deadline
-	c.parentContext.doneChannel = c.doneChannel
+	if ch := c.doneChannel.Load(); ch != nil {
+		c.parentContext.doneChannel.Store(ch)
+	}
 }
 
 // Set attaches a value to the context. It can later be retrieved with Get.
@@ -496,10 +501,15 @@ func (c *Context) Deadline() (time.Time, bool) {
 // will be closed once the response has been finalized and sent to the
 // client, or if if the request has been aborted.
 func (c *Context) Done() <-chan struct{} {
-	if c.doneChannel == nil {
-		c.doneChannel = make(chan struct{})
+	ch := c.doneChannel.Load()
+	if ch == nil {
+		newCh := make(chan struct{})
+		if c.doneChannel.CompareAndSwap(nil, &newCh) {
+			return newCh
+		}
+		ch = c.doneChannel.Load()
 	}
-	return c.doneChannel
+	return *ch
 }
 
 // Err returns the final error of the request. Will be nil if the request
