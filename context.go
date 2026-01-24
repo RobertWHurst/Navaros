@@ -23,10 +23,14 @@ var MaxRequestBodySize int64 = 1024 * 1024 * 10 // 10MB
 // Context represents a request and response. Navaros handlers access the
 // request and build the response through the context.
 type Context struct {
+	// mu protects all mutable fields for concurrent access
+	mu sync.RWMutex
+
+	// Immutable after creation
 	parentContext *Context
+	request       *http.Request
 
-	request *http.Request
-
+	// Mutable - protected by mu
 	method HTTPMethod
 	path   string
 	params RequestParams
@@ -241,28 +245,41 @@ func (c *Context) tryUpdateParent() {
 }
 
 // Set attaches a value to the context. It can later be retrieved with Get.
+// This method is thread-safe.
 func (c *Context) Set(key string, value any) {
+	c.mu.Lock()
 	if c.bodyWriter == nil {
+		c.mu.Unlock()
 		panic("context cannot be used after handler returns - handlers must block until all operations complete")
 	}
 	c.associatedValues[key] = value
+	c.mu.Unlock()
 }
 
 // Get retrieves a value attached to the context with Set.
+// This method is thread-safe.
 func (c *Context) Get(key string) (any, bool) {
+	c.mu.RLock()
 	v, ok := c.associatedValues[key]
+	c.mu.RUnlock()
 	return v, ok
 }
 
 // MustGet retrieves a value attached to the context with Set. It panics
-// if the value does not exist.
+// if the value does not exist. This method is thread-safe.
 func (c *Context) MustGet(key string) any {
-	return c.associatedValues[key]
+	c.mu.RLock()
+	v := c.associatedValues[key]
+	c.mu.RUnlock()
+	return v
 }
 
 // Delete removes a value attached to the context with Set.
+// This method is thread-safe.
 func (c *Context) Delete(key string) {
+	c.mu.Lock()
 	delete(c.associatedValues, key)
+	c.mu.Unlock()
 }
 
 // Method returns the HTTP method of the request.
@@ -282,9 +299,16 @@ func (c *Context) URL() *url.URL {
 
 // Params returns the parameters of the request. These are defined by the
 // route pattern used to bind each handler, and may be different for each
-// time next is called.
+// time next is called. This method is thread-safe and returns a copy of
+// the params map.
 func (c *Context) Params() RequestParams {
-	return c.params
+	c.mu.RLock()
+	paramsCopy := make(RequestParams, len(c.params))
+	for k, v := range c.params {
+		paramsCopy[k] = v
+	}
+	c.mu.RUnlock()
+	return paramsCopy
 }
 
 // Query returns the query parameters of the request.
@@ -481,32 +505,41 @@ func (c *Context) Close() error {
 }
 
 // Deadline returns the deadline of the request. Deadline is part of the go
-// context.Context interface.
+// context.Context interface. This method is thread-safe.
 func (c *Context) Deadline() (time.Time, bool) {
+	c.mu.RLock()
 	ok := c.deadline != nil
 	deadline := time.Time{}
 	if ok {
 		deadline = *c.deadline
 	}
+	c.mu.RUnlock()
 	return deadline, ok
 }
 
 // Done added for compatibility with go's context.Context.
 // Done is part of the go context.Context interface. Returns a channel that
 // will be closed once the response has been finalized and sent to the
-// client, or if if the request has been aborted.
+// client, or if if the request has been aborted. This method is thread-safe.
 func (c *Context) Done() <-chan struct{} {
+	c.mu.Lock()
 	if c.doneChannel == nil {
 		c.doneChannel = make(chan struct{})
 	}
-	return c.doneChannel
+	ch := c.doneChannel
+	c.mu.Unlock()
+	return ch
 }
 
 // Err returns the final error of the request. Will be nil if the request
 // is still being served even if an error has occurred. Populated once the
 // request is done. Err is part of the go context.Context interface.
+// This method is thread-safe.
 func (c *Context) Err() error {
-	return c.FinalError
+	c.mu.RLock()
+	err := c.FinalError
+	c.mu.RUnlock()
+	return err
 }
 
 // Value is a noop for compatibility with go's context.Context.
