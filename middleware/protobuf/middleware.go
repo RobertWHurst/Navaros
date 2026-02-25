@@ -45,7 +45,7 @@ func unmarshalRequestBody(ctx *navaros.Context) {
 		return
 	}
 
-	ctx.SetRequestBodyUnmarshaller(func(into any) error {
+	ctx.SetRequestBodyUnmarshaller(func(ctx *navaros.Context, into any) error {
 		protoMsg, ok := into.(proto.Message)
 		if !ok {
 			return errors.New("value must implement proto.Message (generated protobuf struct)")
@@ -55,7 +55,7 @@ func unmarshalRequestBody(ctx *navaros.Context) {
 }
 
 func marshalResponseBody(ctx *navaros.Context) {
-	ctx.SetResponseBodyMarshaller(func(from any) (io.Reader, error) {
+	ctx.SetResponseBodyMarshaller(func(ctx *navaros.Context, from any) (io.Reader, error) {
 		protoMsg, ok := from.(proto.Message)
 		if !ok {
 			return nil, errors.New("value must implement proto.Message (generated protobuf struct)")

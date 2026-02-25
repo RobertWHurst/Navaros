@@ -280,7 +280,7 @@ func TestContextRequestBodyUnmarshaller(t *testing.T) {
 	req := httptest.NewRequest("GET", "/a/b/c", bytes.NewBuffer([]byte(`{"test":"test"}`)))
 
 	ctx := navaros.NewContext(res, req, nil)
-	ctx.SetRequestBodyUnmarshaller(func(into any) error {
+	ctx.SetRequestBodyUnmarshaller(func(ctx *navaros.Context, into any) error {
 		bodyBytes, err := io.ReadAll(ctx.RequestBodyReader())
 		if err != nil {
 			return err
@@ -306,7 +306,7 @@ func TestContextSetResponseBodyMarshaller(t *testing.T) {
 
 	ctx := navaros.NewContext(res, req, nil)
 
-	ctx.SetResponseBodyMarshaller(func(from any) (io.Reader, error) {
+	ctx.SetResponseBodyMarshaller(func(ctx *navaros.Context, from any) (io.Reader, error) {
 		return nil, nil
 	})
 }
@@ -757,7 +757,7 @@ func TestContextSetRequestBodyReaderWithReadCloser(t *testing.T) {
 	ctx := navaros.NewContext(res, req, func(ctx *navaros.Context) {
 		reader := io.NopCloser(bytes.NewBufferString("test"))
 		ctx.SetRequestBodyReader(reader)
-		
+
 		body, err := io.ReadAll(ctx.RequestBodyReader())
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -774,7 +774,7 @@ func TestContextResponseBodyMarshaller(t *testing.T) {
 	res := httptest.NewRecorder()
 
 	ctx := navaros.NewContext(res, req, func(ctx *navaros.Context) {
-		ctx.SetResponseBodyMarshaller(func(from any) (io.Reader, error) {
+		ctx.SetResponseBodyMarshaller(func(ctx *navaros.Context, from any) (io.Reader, error) {
 			data := from.(map[string]string)
 			return bytes.NewBufferString(data["key"]), nil
 		})
@@ -794,7 +794,7 @@ func TestContextResponseBodyMarshallerError(t *testing.T) {
 	res := httptest.NewRecorder()
 
 	ctx := navaros.NewContext(res, req, func(ctx *navaros.Context) {
-		ctx.SetResponseBodyMarshaller(func(from any) (io.Reader, error) {
+		ctx.SetResponseBodyMarshaller(func(ctx *navaros.Context, from any) (io.Reader, error) {
 			return nil, errors.New("marshalling failed")
 		})
 
@@ -821,7 +821,6 @@ func TestContextNewContextWithNodeError(t *testing.T) {
 	}
 }
 
-
 func TestContextRequestBodyReaderMaxSize(t *testing.T) {
 	req := httptest.NewRequest("GET", "/test", bytes.NewBufferString("test data"))
 	res := httptest.NewRecorder()
@@ -831,7 +830,7 @@ func TestContextRequestBodyReaderMaxSize(t *testing.T) {
 
 		reader := ctx.RequestBodyReader()
 		body, err := io.ReadAll(reader)
-		
+
 		if err == nil && len(body) > 4 {
 			t.Error("expected body to be limited by MaxRequestBodySize")
 		}

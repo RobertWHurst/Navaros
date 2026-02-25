@@ -44,13 +44,13 @@ func unmarshalRequestBody(ctx *navaros.Context) {
 		return
 	}
 
-	ctx.SetRequestBodyUnmarshaller(func(into any) error {
+	ctx.SetRequestBodyUnmarshaller(func(ctx *navaros.Context, into any) error {
 		return json.Unmarshal(requestBodyBytes, into)
 	})
 }
 
 func marshalResponseBody(ctx *navaros.Context) {
-	ctx.SetResponseBodyMarshaller(func(from any) (io.Reader, error) {
+	ctx.SetResponseBodyMarshaller(func(ctx *navaros.Context, from any) (io.Reader, error) {
 		if from != nil {
 			ctx.Headers.Add("Content-Type", "application/json")
 		}

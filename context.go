@@ -51,8 +51,8 @@ type Context struct {
 	FinalError      error
 	FinalErrorStack string
 
-	requestBodyUnmarshaller func(into any) error
-	responseBodyMarshaller  func(from any) (io.Reader, error)
+	requestBodyUnmarshaller func(ctx *Context, into any) error
+	responseBodyMarshaller  func(ctx *Context, from any) (io.Reader, error)
 
 	currentHandlerNode               *HandlerNode
 	currentHandlerNodeMatches        bool
@@ -381,18 +381,18 @@ func (c *Context) UnmarshalRequestBody(into any) error {
 	if c.requestBodyUnmarshaller == nil {
 		return errors.New("no request body unmarshaller set. use SetRequestBodyUnmarshaller() or add body parser middleware")
 	}
-	return c.requestBodyUnmarshaller(into)
+	return c.requestBodyUnmarshaller(c, into)
 }
 
 // SetRequestBodyUnmarshaller sets the request body unmarshaller. Middleware
 // that parses request bodies should call this method to set the unmarshaller.
-func (c *Context) SetRequestBodyUnmarshaller(unmarshaller func(into any) error) {
+func (c *Context) SetRequestBodyUnmarshaller(unmarshaller func(ctx *Context, into any) error) {
 	c.requestBodyUnmarshaller = unmarshaller
 }
 
 // SetResponseBodyMarshaller sets the response body marshaller. Middleware
 // that encodes response bodies should call this method to set the marshaller.
-func (c *Context) SetResponseBodyMarshaller(marshaller func(from any) (io.Reader, error)) {
+func (c *Context) SetResponseBodyMarshaller(marshaller func(ctx *Context, from any) (io.Reader, error)) {
 	c.responseBodyMarshaller = marshaller
 }
 
@@ -554,5 +554,5 @@ func (c *Context) marshallResponseBody() (io.Reader, error) {
 	if c.responseBodyMarshaller == nil {
 		return nil, errors.New("no response body marshaller set. use SetResponseBodyMarshaller() or add body encoder middleware")
 	}
-	return c.responseBodyMarshaller(c.Body)
+	return c.responseBodyMarshaller(c, c.Body)
 }
