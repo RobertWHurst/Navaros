@@ -11,26 +11,30 @@ import (
 // requests before they are passed to the router. This is most useful for
 // libraries that wish to extend the functionality of Navaros.
 type RouteDescriptor struct {
-	Method  HTTPMethod
-	Pattern *Pattern
+	Method   HTTPMethod
+	Pattern  *Pattern
+	Metadata any
 }
 
 // MarshalJSON returns the JSON representation of the route descriptor.
 func (r *RouteDescriptor) MarshalJSON() ([]byte, error) {
 	return json.Marshal(struct {
-		Method  HTTPMethod
-		Pattern string
+		Method   HTTPMethod `json:"Method"`
+		Pattern  string     `json:"Pattern"`
+		Metadata any        `json:"Metadata,omitempty"`
 	}{
-		Method:  r.Method,
-		Pattern: r.Pattern.String(),
+		Method:   r.Method,
+		Pattern:  r.Pattern.String(),
+		Metadata: r.Metadata,
 	})
 }
 
 // UnmarshalJSON parses the JSON representation of the route descriptor.
 func (r *RouteDescriptor) UnmarshalJSON(data []byte) error {
 	fromJSONStruct := struct {
-		Method  HTTPMethod
-		Pattern string
+		Method   HTTPMethod      `json:"Method"`
+		Pattern  string          `json:"Pattern"`
+		Metadata json.RawMessage `json:"Metadata,omitempty"`
 	}{}
 	if err := json.Unmarshal(data, &fromJSONStruct); err != nil {
 		return err
@@ -43,6 +47,9 @@ func (r *RouteDescriptor) UnmarshalJSON(data []byte) error {
 
 	r.Method = fromJSONStruct.Method
 	r.Pattern = pattern
+	if len(fromJSONStruct.Metadata) > 0 {
+		r.Metadata = fromJSONStruct.Metadata
+	}
 
 	return nil
 }

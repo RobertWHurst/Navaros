@@ -217,6 +217,24 @@ func (r *Router) bind(isPublic bool, method HTTPMethod, path string, handlersAnd
 		panic(err)
 	}
 
+	// Extract route options before handler validation.
+	var metadata any
+	filtered := make([]any, 0, len(handlersAndTransformers))
+	for _, item := range handlersAndTransformers {
+		if opt, ok := item.(RouteOption); ok {
+			if m, ok := opt.(MetadataOption); ok {
+				metadata = m.value
+			}
+			continue
+		}
+		filtered = append(filtered, item)
+	}
+	handlersAndTransformers = filtered
+
+	if len(handlersAndTransformers) == 0 {
+		panic("no handlers or transformers provided")
+	}
+
 	for _, handlerOrTransformer := range handlersAndTransformers {
 		if _, ok := handlerOrTransformer.(Transformer); ok {
 			continue
@@ -241,10 +259,10 @@ func (r *Router) bind(isPublic bool, method HTTPMethod, path string, handlersAnd
 				if err != nil {
 					panic(err)
 				}
-				r.addRouteDescriptor(routeDescriptor.Method, subPattern)
+				r.addRouteDescriptor(routeDescriptor.Method, subPattern, routeDescriptor.Metadata)
 			}
 		} else if isPublic && !hasAddedOwnRouteDescriptor {
-			r.addRouteDescriptor(method, pattern)
+			r.addRouteDescriptor(method, pattern, metadata)
 			hasAddedOwnRouteDescriptor = true
 		}
 	}
@@ -266,7 +284,7 @@ func (r *Router) bind(isPublic bool, method HTTPMethod, path string, handlersAnd
 
 // addRouteDescriptor adds a route descriptor to the router's list of route
 // descriptors, but only if it doesn't already exist.
-func (r *Router) addRouteDescriptor(method HTTPMethod, pattern *Pattern) {
+func (r *Router) addRouteDescriptor(method HTTPMethod, pattern *Pattern, metadata any) {
 	path := pattern.String()
 	if r.routeDescriptorMap == nil {
 		r.routeDescriptorMap = map[HTTPMethod]map[string]bool{}
@@ -282,7 +300,8 @@ func (r *Router) addRouteDescriptor(method HTTPMethod, pattern *Pattern) {
 	}
 	r.routeDescriptorMap[method][path] = true
 	r.routeDescriptors = append(r.routeDescriptors, &RouteDescriptor{
-		Method:  method,
-		Pattern: pattern,
+		Method:   method,
+		Pattern:  pattern,
+		Metadata: metadata,
 	})
 }
