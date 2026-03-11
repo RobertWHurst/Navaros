@@ -46,8 +46,9 @@ func (r *Router) ServeHTTP(res http.ResponseWriter, req *http.Request) {
 func (r *Router) Handle(ctx *Context) {
 	subCtx := NewSubContextWithNode(ctx, r.firstHandlerNode)
 	subCtx.Next()
+	noRemainingHandlers := subCtx.currentHandlerNode == nil
 	subCtx.free()
-	if subCtx.currentHandlerNode == nil {
+	if noRemainingHandlers {
 		ctx.Next()
 	}
 }
