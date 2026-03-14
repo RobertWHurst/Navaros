@@ -38,15 +38,11 @@ func unmarshalRequestBody(ctx *navaros.Context) {
 		return
 	}
 
-	requestBodyReader := ctx.RequestBodyReader()
-	requestBodyBytes, err := io.ReadAll(requestBodyReader)
-	if err != nil {
-		ctx.Error = err
-		return
-	}
-
-	ctx.SetRequestBodyReader(bytes.NewReader(requestBodyBytes))
 	ctx.SetRequestBodyUnmarshaller(func(ctx *navaros.Context, into any) error {
+		requestBodyBytes, err := io.ReadAll(ctx.RequestBodyReader())
+		if err != nil {
+			return err
+		}
 		protoMsg, ok := into.(proto.Message)
 		if !ok {
 			return errors.New("value must implement proto.Message (generated protobuf struct)")
