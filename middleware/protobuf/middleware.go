@@ -45,6 +45,7 @@ func unmarshalRequestBody(ctx *navaros.Context) {
 		return
 	}
 
+	ctx.SetRequestBodyReader(bytes.NewReader(requestBodyBytes))
 	ctx.SetRequestBodyUnmarshaller(func(ctx *navaros.Context, into any) error {
 		protoMsg, ok := into.(proto.Message)
 		if !ok {

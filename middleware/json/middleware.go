@@ -44,6 +44,7 @@ func unmarshalRequestBody(ctx *navaros.Context) {
 		return
 	}
 
+	ctx.SetRequestBodyReader(bytes.NewReader(requestBodyBytes))
 	ctx.SetRequestBodyUnmarshaller(func(ctx *navaros.Context, into any) error {
 		return json.Unmarshal(requestBodyBytes, into)
 	})
