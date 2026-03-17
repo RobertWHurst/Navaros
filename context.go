@@ -303,12 +303,12 @@ func (c *Context) URL() *url.URL {
 // the params map.
 func (c *Context) Params() RequestParams {
 	c.mu.RLock()
-	paramsCopy := make(RequestParams, len(c.params))
+	params := make(RequestParams, len(c.params))
 	for k, v := range c.params {
-		paramsCopy[k] = v
+		params[k] = v
 	}
 	c.mu.RUnlock()
-	return paramsCopy
+	return params
 }
 
 // Query returns the query parameters of the request.
@@ -388,6 +388,17 @@ func (c *Context) UnmarshalRequestBody(into any) error {
 // that parses request bodies should call this method to set the unmarshaller.
 func (c *Context) SetRequestBodyUnmarshaller(unmarshaller func(ctx *Context, into any) error) {
 	c.requestBodyUnmarshaller = unmarshaller
+}
+
+// SetResponseBodyWriter sets the response writer. This allows middleware to
+// intercept and replace the writer. This is required for middleware that
+// works at the data stream level, such as gzip middleware.
+func (c *Context) SetResponseBodyWriter(bodyWriter http.ResponseWriter) error {
+	if c.hasWrittenBody {
+		return errors.New("cannot replace body writer. body already written")
+	}
+	c.bodyWriter = bodyWriter
+	return nil
 }
 
 // SetResponseBodyMarshaller sets the response body marshaller. Middleware
