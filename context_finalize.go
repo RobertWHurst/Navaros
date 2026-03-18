@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"net/http"
 	"net/url"
 	"path"
 	"strings"
@@ -61,11 +62,28 @@ func (c *Context) finalize() {
 		}
 	}
 
-	if !c.hasWrittenHeaders && redirect != nil {
+	if redirect != nil {
 		to := resolveRedirectLocation(redirect.To, c.Request().URL.Path)
 		c.Headers.Set("Location", to)
 	}
-	c.flushHeaders()
+
+	writer := c.bodyWriter
+	if writer == nil {
+		writer = c.responseWriter
+		if !c.inhibitResponse {
+			for key, values := range c.Headers {
+				for _, value := range values {
+					writer.Header().Add(key, value)
+				}
+			}
+			for _, cookie := range c.Cookies {
+				http.SetCookie(writer, cookie)
+			}
+		}
+	}
+	if !c.inhibitResponse {
+		writer.WriteHeader(c.Status)
+	}
 
 	hasBody := finalBodyReader != nil
 	is100Range := c.Status >= 100 && c.Status < 200
@@ -75,7 +93,7 @@ func (c *Context) finalize() {
 		if is100Range || is204Or304 {
 			fmt.Printf("response with status %d has body but no content is expected", c.Status)
 		} else {
-			_, err := io.Copy(c.bodyWriter, finalBodyReader)
+			_, err := io.Copy(writer, finalBodyReader)
 			if finalBodyReaderCloser, ok := finalBodyReader.(io.Closer); ok {
 				if err := finalBodyReaderCloser.Close(); err != nil && PrintHandlerErrors {
 					fmt.Printf("Failed to close body read closer: %s", err)
@@ -85,6 +103,12 @@ func (c *Context) finalize() {
 				c.Status = 500
 				fmt.Printf("error occurred when writing response body: %s", err)
 			}
+		}
+	}
+
+	if closer, ok := writer.(io.Closer); ok {
+		if err := closer.Close(); err != nil && PrintHandlerErrors {
+			fmt.Printf("Failed to close body writer: %s", err)
 		}
 	}
 

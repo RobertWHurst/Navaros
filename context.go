@@ -39,6 +39,7 @@ type Context struct {
 	Headers           http.Header
 	Cookies           []*http.Cookie
 	Body              any
+	responseWriter    http.ResponseWriter
 	bodyWriter        http.ResponseWriter
 	hasWrittenHeaders bool
 	hasWrittenBody    bool
@@ -98,7 +99,7 @@ func NewContextWithNode(res http.ResponseWriter, req *http.Request, firstHandler
 	ctx.method = method
 	ctx.path = req.URL.Path
 
-	ctx.bodyWriter = res
+	ctx.responseWriter = res
 
 	ctx.currentHandlerNode = firstHandlerNode
 
@@ -126,6 +127,7 @@ func NewSubContextWithNode(ctx *Context, firstHandlerNode *HandlerNode) *Context
 	subContext.Headers = maps.Clone(ctx.Headers)
 	subContext.Cookies = slices.Clone(ctx.Cookies)
 	subContext.Body = ctx.Body
+	subContext.responseWriter = ctx.responseWriter
 	subContext.bodyWriter = ctx.bodyWriter
 	subContext.hasWrittenHeaders = ctx.hasWrittenHeaders
 	subContext.hasWrittenBody = ctx.hasWrittenBody
@@ -184,6 +186,7 @@ func (c *Context) free() {
 	}
 	c.Cookies = c.Cookies[:0]
 	c.Body = nil
+	c.responseWriter = nil
 	c.bodyWriter = nil
 	c.hasWrittenHeaders = false
 	c.hasWrittenBody = false
@@ -250,7 +253,7 @@ func (c *Context) tryUpdateParent() {
 // This method is thread-safe.
 func (c *Context) Set(key string, value any) {
 	c.mu.Lock()
-	if c.bodyWriter == nil {
+	if c.responseWriter == nil {
 		c.mu.Unlock()
 		panic("context cannot be used after handler returns - handlers must block until all operations complete")
 	}
@@ -361,7 +364,7 @@ func (c *Context) RequestBodyReader() io.ReadCloser {
 	if maxRequestBodySize == -1 {
 		return c.request.Body
 	}
-	return http.MaxBytesReader(c.bodyWriter, c.request.Body, maxRequestBodySize)
+	return http.MaxBytesReader(c.responseWriter, c.request.Body, maxRequestBodySize)
 }
 
 // SetRequestBodyReader Allows middleware to intercept the request body reader
@@ -449,15 +452,17 @@ func (c *Context) Request() *http.Request {
 	return c.request
 }
 
-// ResponseWriter returns the underlying http.ResponseWriter object.
+// ResponseWriter returns the http.ResponseWriter for writing to the response
+// directly. On the first call the raw writer is wrapped in a
+// ContextResponseWriter that flushes context headers and status on first write.
 func (c *Context) ResponseWriter() http.ResponseWriter {
-	if c.bodyWriter == nil {
+	if c.responseWriter == nil {
 		panic("context cannot be used after handler returns - handlers must block until all operations complete")
 	}
-	return &ContextResponseWriter{
-		ctx:        c,
-		bodyWriter: c.bodyWriter,
+	if c.bodyWriter == nil {
+		c.bodyWriter = &ContextResponseWriter{ctx: c, bodyWriter: c.responseWriter}
 	}
+	return c.bodyWriter
 }
 
 // ResponseStatus returns the HTTP status code that will be sent to the
@@ -481,50 +486,26 @@ func (c *Context) ResponseStatus() int {
 	}
 }
 
-func (c *Context) flushHeaders() {
-	if c.hasWrittenHeaders {
-		return
-	}
-	c.hasWrittenHeaders = true
-
-	for key, values := range c.Headers {
-		for _, value := range values {
-			c.bodyWriter.Header().Add(key, value)
-		}
-	}
-	for _, cookie := range c.Cookies {
-		http.SetCookie(c.bodyWriter, cookie)
-	}
-
-	if c.inhibitResponse {
-		return
-	}
-
-	status := c.Status
-	if status == 0 {
-		status = http.StatusOK
-	}
-	c.bodyWriter.WriteHeader(status)
-}
-
 // Write writes bytes to the response body. This is useful for streaming the
 // response body, or for middleware which encodes the response body.
 func (c *Context) Write(bytes []byte) (int, error) {
-	if c.bodyWriter == nil {
+	if c.responseWriter == nil {
 		return 0, errors.New("context cannot be used after handler returns - handlers must block until all operations complete")
 	}
-	c.hasWrittenBody = true
-	c.flushHeaders()
-	return c.bodyWriter.Write(bytes)
+	return c.ResponseWriter().Write(bytes)
 }
 
 // Flush sends any bytes buffered in the response body to the client. Buffering
 // is controlled by go's http.ResponseWriter.
 func (c *Context) Flush() {
-	if c.bodyWriter == nil {
+	if c.responseWriter == nil {
 		panic("context cannot be used after handler returns - handlers must block until all operations complete")
 	}
-	c.bodyWriter.(http.Flusher).Flush()
+	if c.bodyWriter != nil {
+		c.bodyWriter.(http.Flusher).Flush()
+	} else {
+		c.responseWriter.(http.Flusher).Flush()
+	}
 }
 
 // Close simply aliases Flush. It's implemented to satisfy the io.Closer
