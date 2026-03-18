@@ -838,6 +838,37 @@ func TestRouterPanicRecovery(t *testing.T) {
 	}
 }
 
+func Test_Router_SubRouterHandlerNotCallingNextDoesNotPropagateToParent(t *testing.T) {
+	r := httptest.NewRequest("GET", "/test", nil)
+	w := httptest.NewRecorder()
+
+	calledParentHandler := false
+
+	subRouter := navaros.NewRouter()
+	subRouter.Get("/test", func(ctx *navaros.Context) {
+		ctx.Status = 200
+		ctx.Body = "handled by sub-router"
+	})
+
+	parentRouter := navaros.NewRouter()
+	parentRouter.Use(subRouter)
+	parentRouter.Get("/test", func(ctx *navaros.Context) {
+		calledParentHandler = true
+	})
+
+	parentRouter.ServeHTTP(w, r)
+
+	if calledParentHandler {
+		t.Error("expected parent handler not to be called when sub-router handler does not call next")
+	}
+	if w.Code != 200 {
+		t.Errorf("expected 200, got %d", w.Code)
+	}
+	if w.Body.String() != "handled by sub-router" {
+		t.Errorf("expected 'handled by sub-router', got %q", w.Body.String())
+	}
+}
+
 func TestRouterLookupNonexistent(t *testing.T) {
 	router := navaros.NewRouter()
 	router.Get("/users", func(ctx *navaros.Context) {})

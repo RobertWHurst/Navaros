@@ -58,6 +58,7 @@ type Context struct {
 	currentHandlerNodeMatches        bool
 	currentHandlerOrTransformerIndex int
 	currentHandlerOrTransformer      any
+	nextBeyondEnd                    bool
 
 	associatedValues map[string]any
 
@@ -202,6 +203,7 @@ func (c *Context) free() {
 	c.currentHandlerNodeMatches = false
 	c.currentHandlerOrTransformerIndex = 0
 	c.currentHandlerOrTransformer = nil
+	c.nextBeyondEnd = false
 
 	for k := range c.associatedValues {
 		delete(c.associatedValues, k)
