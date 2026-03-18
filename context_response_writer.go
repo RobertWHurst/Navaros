@@ -7,22 +7,22 @@ import (
 )
 
 type ContextResponseWriter struct {
-	hasWrittenHeaders *bool
-	hasWrittenBody    *bool
-	bodyWriter        http.ResponseWriter
+	ctx        *Context
+	bodyWriter http.ResponseWriter
 }
 
 var _ http.ResponseWriter = &ContextResponseWriter{}
 var _ http.Hijacker = &ContextResponseWriter{}
 
 func (c *ContextResponseWriter) Write(bytes []byte) (int, error) {
-	*c.hasWrittenBody = true
+	c.ctx.hasWrittenBody = true
+	c.ctx.flushHeaders()
 	return c.bodyWriter.Write(bytes)
 }
 
 func (c *ContextResponseWriter) WriteHeader(status int) {
-	*c.hasWrittenHeaders = true
-	c.bodyWriter.WriteHeader(status)
+	c.ctx.Status = status
+	c.ctx.flushHeaders()
 }
 
 func (c *ContextResponseWriter) Header() http.Header {

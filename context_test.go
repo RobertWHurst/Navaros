@@ -674,6 +674,69 @@ func TestContextValue(t *testing.T) {
 	}
 }
 
+func TestContextResponseWriterFlushesHeadersOnWrite(t *testing.T) {
+	req := httptest.NewRequest("GET", "/test", nil)
+	res := httptest.NewRecorder()
+
+	ctx := navaros.NewContext(res, req, func(ctx *navaros.Context) {
+		ctx.Status = 201
+		ctx.Headers.Set("X-Custom", "flushed")
+		writer := ctx.ResponseWriter()
+		writer.Write([]byte("body"))
+	})
+	ctx.Next()
+	navaros.CtxFinalize(ctx)
+
+	if res.Code != 201 {
+		t.Errorf("expected status 201, got %d", res.Code)
+	}
+	if res.Header().Get("X-Custom") != "flushed" {
+		t.Errorf("expected X-Custom header to be flushed, got %q", res.Header().Get("X-Custom"))
+	}
+	if res.Body.String() != "body" {
+		t.Errorf("expected body %q, got %q", "body", res.Body.String())
+	}
+}
+
+func TestContextResponseWriterFlushesHeadersOnlyOnce(t *testing.T) {
+	req := httptest.NewRequest("GET", "/test", nil)
+	res := httptest.NewRecorder()
+
+	ctx := navaros.NewContext(res, req, func(ctx *navaros.Context) {
+		ctx.Status = 200
+		ctx.Headers.Set("X-Test", "value")
+		writer := ctx.ResponseWriter()
+		writer.Write([]byte("first"))
+		writer.Write([]byte("second"))
+	})
+	ctx.Next()
+	navaros.CtxFinalize(ctx)
+
+	if res.Body.String() != "firstsecond" {
+		t.Errorf("expected body %q, got %q", "firstsecond", res.Body.String())
+	}
+}
+
+func TestContextWriteFlushesHeaders(t *testing.T) {
+	req := httptest.NewRequest("GET", "/test", nil)
+	res := httptest.NewRecorder()
+
+	ctx := navaros.NewContext(res, req, func(ctx *navaros.Context) {
+		ctx.Status = 202
+		ctx.Headers.Set("X-Via", "ctx-write")
+		ctx.Write([]byte("direct"))
+	})
+	ctx.Next()
+	navaros.CtxFinalize(ctx)
+
+	if res.Code != 202 {
+		t.Errorf("expected status 202, got %d", res.Code)
+	}
+	if res.Header().Get("X-Via") != "ctx-write" {
+		t.Errorf("expected X-Via header, got %q", res.Header().Get("X-Via"))
+	}
+}
+
 func TestContextResponseWriterHeader(t *testing.T) {
 	req := httptest.NewRequest("GET", "/test", nil)
 	res := httptest.NewRecorder()

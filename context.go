@@ -455,9 +455,8 @@ func (c *Context) ResponseWriter() http.ResponseWriter {
 		panic("context cannot be used after handler returns - handlers must block until all operations complete")
 	}
 	return &ContextResponseWriter{
-		hasWrittenHeaders: &c.hasWrittenHeaders,
-		hasWrittenBody:    &c.hasWrittenBody,
-		bodyWriter:        c.bodyWriter,
+		ctx:        c,
+		bodyWriter: c.bodyWriter,
 	}
 }
 
@@ -482,6 +481,32 @@ func (c *Context) ResponseStatus() int {
 	}
 }
 
+func (c *Context) flushHeaders() {
+	if c.hasWrittenHeaders {
+		return
+	}
+	c.hasWrittenHeaders = true
+
+	for key, values := range c.Headers {
+		for _, value := range values {
+			c.bodyWriter.Header().Add(key, value)
+		}
+	}
+	for _, cookie := range c.Cookies {
+		http.SetCookie(c.bodyWriter, cookie)
+	}
+
+	if c.inhibitResponse {
+		return
+	}
+
+	status := c.Status
+	if status == 0 {
+		status = http.StatusOK
+	}
+	c.bodyWriter.WriteHeader(status)
+}
+
 // Write writes bytes to the response body. This is useful for streaming the
 // response body, or for middleware which encodes the response body.
 func (c *Context) Write(bytes []byte) (int, error) {
@@ -489,15 +514,7 @@ func (c *Context) Write(bytes []byte) (int, error) {
 		return 0, errors.New("context cannot be used after handler returns - handlers must block until all operations complete")
 	}
 	c.hasWrittenBody = true
-
-	if !c.hasWrittenHeaders {
-		c.hasWrittenHeaders = true
-		if c.Status == 0 {
-			c.Status = 200
-		}
-		c.bodyWriter.WriteHeader(c.Status)
-	}
-
+	c.flushHeaders()
 	return c.bodyWriter.Write(bytes)
 }
 

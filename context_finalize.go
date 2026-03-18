@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"net/http"
 	"net/url"
 	"path"
 	"strings"
@@ -62,48 +61,11 @@ func (c *Context) finalize() {
 		}
 	}
 
-	if !c.hasWrittenHeaders {
-		for key, values := range c.Headers {
-			for _, value := range values {
-				c.bodyWriter.Header().Add(key, value)
-			}
-		}
-
-		if redirect != nil {
-			to := redirect.To
-			toUrl, err := url.Parse(to)
-			if err != nil {
-				c.Status = 500
-				fmt.Printf("Error occurred when parsing redirect url: %s", err)
-			} else {
-				if toUrl.Scheme == "" && toUrl.Host == "" {
-					currentPath := c.Request().URL.Path
-					if currentPath == "" {
-						currentPath = "/"
-					}
-					if to == "" || to[0] != '/' {
-						currentChunks, _ := path.Split(currentPath)
-						to = currentChunks + to
-					}
-					query := ""
-					if i := strings.Index(to, "?"); i != -1 {
-						query = to[i:]
-						to = to[:i]
-					}
-					to += query
-				}
-			}
-			c.bodyWriter.Header().Add("Location", to)
-		}
-
-		for _, cookie := range c.Cookies {
-			http.SetCookie(c.bodyWriter, cookie)
-		}
-
-		if !c.inhibitResponse {
-			c.bodyWriter.WriteHeader(c.Status)
-		}
+	if !c.hasWrittenHeaders && redirect != nil {
+		to := resolveRedirectLocation(redirect.To, c.Request().URL.Path)
+		c.Headers.Set("Location", to)
 	}
+	c.flushHeaders()
 
 	hasBody := finalBodyReader != nil
 	is100Range := c.Status >= 100 && c.Status < 200
@@ -131,4 +93,22 @@ func (c *Context) finalize() {
 	if c.doneChannel != nil {
 		close(c.doneChannel)
 	}
+}
+
+func resolveRedirectLocation(to string, currentPath string) string {
+	toUrl, err := url.Parse(to)
+	if err != nil {
+		return to
+	}
+	if toUrl.Scheme != "" || toUrl.Host != "" {
+		return to
+	}
+	if currentPath == "" {
+		currentPath = "/"
+	}
+	if to == "" || to[0] != '/' {
+		dir, _ := path.Split(currentPath)
+		to = dir + to
+	}
+	return to
 }
