@@ -55,10 +55,13 @@ type Context struct {
 	requestBodyUnmarshaller func(ctx *Context, into any) error
 	responseBodyMarshaller  func(ctx *Context, from any) (io.Reader, error)
 
+	wrapHandlers                     []HandlerFunc
 	currentHandlerNode               *HandlerNode
 	currentHandlerNodeMatches        bool
 	currentHandlerOrTransformerIndex int
 	currentHandlerOrTransformer      any
+	currentWrapHandlerIndex          int
+	currentWrapHandler               HandlerFunc
 	nextBeyondEnd                    bool
 
 	associatedValues map[string]any
@@ -129,6 +132,7 @@ func NewSubContextWithNode(ctx *Context, firstHandlerNode *HandlerNode) *Context
 	subContext.Body = ctx.Body
 	subContext.responseWriter = ctx.responseWriter
 	subContext.bodyWriter = ctx.bodyWriter
+	subContext.wrapHandlers = ctx.wrapHandlers
 	subContext.hasWrittenHeaders = ctx.hasWrittenHeaders
 	subContext.hasWrittenBody = ctx.hasWrittenBody
 
@@ -206,6 +210,9 @@ func (c *Context) free() {
 	c.currentHandlerNodeMatches = false
 	c.currentHandlerOrTransformerIndex = 0
 	c.currentHandlerOrTransformer = nil
+	c.wrapHandlers = nil
+	c.currentWrapHandlerIndex = 0
+	c.currentWrapHandler = nil
 	c.nextBeyondEnd = false
 
 	for k := range c.associatedValues {
@@ -463,6 +470,13 @@ func (c *Context) ResponseWriter() http.ResponseWriter {
 		c.bodyWriter = &ContextResponseWriter{ctx: c, bodyWriter: c.responseWriter}
 	}
 	return c.bodyWriter
+}
+
+// WrappedHandler returns the handler that the current wrap handler is wrapping.
+// This is useful for inspecting the handler via reflection (e.g. to get its
+// function name for tracing). Returns nil if not currently inside a wrap handler.
+func (c *Context) WrappedHandler() any {
+	return c.currentHandlerOrTransformer
 }
 
 // ResponseStatus returns the HTTP status code that will be sent to the

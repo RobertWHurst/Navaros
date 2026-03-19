@@ -880,3 +880,175 @@ func TestRouterLookupNonexistent(t *testing.T) {
 		t.Error("expected not to find non-existent handler")
 	}
 }
+
+func TestRouter_Wrap_CallsWrapAroundHandler(t *testing.T) {
+	var order []string
+
+	router := navaros.NewRouter()
+	router.Wrap(func(ctx *navaros.Context) {
+		order = append(order, "wrap-before")
+		ctx.Next()
+		order = append(order, "wrap-after")
+	})
+	router.Get("/test", func(ctx *navaros.Context) {
+		order = append(order, "handler")
+		ctx.Status = 200
+	})
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, httptest.NewRequest("GET", "/test", nil))
+
+	if len(order) != 3 || order[0] != "wrap-before" || order[1] != "handler" || order[2] != "wrap-after" {
+		t.Errorf("expected [wrap-before handler wrap-after], got %v", order)
+	}
+}
+
+func TestRouter_Wrap_MultipleWraps(t *testing.T) {
+	var order []string
+
+	router := navaros.NewRouter()
+	router.Wrap(func(ctx *navaros.Context) {
+		order = append(order, "outer-before")
+		ctx.Next()
+		order = append(order, "outer-after")
+	})
+	router.Wrap(func(ctx *navaros.Context) {
+		order = append(order, "inner-before")
+		ctx.Next()
+		order = append(order, "inner-after")
+	})
+	router.Get("/test", func(ctx *navaros.Context) {
+		order = append(order, "handler")
+		ctx.Status = 200
+	})
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, httptest.NewRequest("GET", "/test", nil))
+
+	expected := []string{"outer-before", "inner-before", "handler", "inner-after", "outer-after"}
+	if len(order) != len(expected) {
+		t.Fatalf("expected %v, got %v", expected, order)
+	}
+	for i, v := range expected {
+		if order[i] != v {
+			t.Errorf("position %d: expected %q, got %q", i, v, order[i])
+		}
+	}
+}
+
+func TestRouter_Wrap_WrapsEachHandlerIndividually(t *testing.T) {
+	wrapCount := 0
+
+	router := navaros.NewRouter()
+	router.Wrap(func(ctx *navaros.Context) {
+		wrapCount++
+		ctx.Next()
+	})
+	router.Use(func(ctx *navaros.Context) {
+		ctx.Next()
+	})
+	router.Get("/test", func(ctx *navaros.Context) {
+		ctx.Status = 200
+	})
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, httptest.NewRequest("GET", "/test", nil))
+
+	if wrapCount != 2 {
+		t.Errorf("expected wrap to be called 2 times (middleware + handler), got %d", wrapCount)
+	}
+}
+
+func TestRouter_Wrap_OnlyAffectsSubsequentHandlers(t *testing.T) {
+	wrapCount := 0
+
+	router := navaros.NewRouter()
+	router.Use(func(ctx *navaros.Context) {
+		ctx.Next()
+	})
+	router.Wrap(func(ctx *navaros.Context) {
+		wrapCount++
+		ctx.Next()
+	})
+	router.Get("/test", func(ctx *navaros.Context) {
+		ctx.Status = 200
+	})
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, httptest.NewRequest("GET", "/test", nil))
+
+	if wrapCount != 1 {
+		t.Errorf("expected wrap to be called 1 time (only handler, not middleware before Wrap), got %d", wrapCount)
+	}
+}
+
+func TestRouter_Wrap_WrappedHandlerReturnsHandler(t *testing.T) {
+	var wrapped any
+
+	router := navaros.NewRouter()
+	router.Wrap(func(ctx *navaros.Context) {
+		wrapped = ctx.WrappedHandler()
+		ctx.Next()
+	})
+	router.Get("/test", func(ctx *navaros.Context) {
+		ctx.Status = 200
+	})
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, httptest.NewRequest("GET", "/test", nil))
+
+	if wrapped == nil {
+		t.Error("expected WrappedHandler to return the handler being wrapped")
+	}
+}
+
+func TestRouter_Wrap_WrapsMultipleHandlersOnSameNode(t *testing.T) {
+	wrapCount := 0
+	var order []string
+
+	router := navaros.NewRouter()
+	router.Wrap(func(ctx *navaros.Context) {
+		wrapCount++
+		order = append(order, "wrap")
+		ctx.Next()
+	})
+	router.Get("/test", func(ctx *navaros.Context) {
+		order = append(order, "handler1")
+		ctx.Next()
+	}, func(ctx *navaros.Context) {
+		order = append(order, "handler2")
+		ctx.Status = 200
+	})
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, httptest.NewRequest("GET", "/test", nil))
+
+	if wrapCount != 2 {
+		t.Errorf("expected wrap called 2 times, got %d", wrapCount)
+	}
+	expected := []string{"wrap", "handler1", "wrap", "handler2"}
+	if len(order) != len(expected) {
+		t.Fatalf("expected %v, got %v", expected, order)
+	}
+	for i, v := range expected {
+		if order[i] != v {
+			t.Errorf("position %d: expected %q, got %q", i, v, order[i])
+		}
+	}
+}
+
+type wrapTestTransformer struct{}
+
+func (wrapTestTransformer) TransformRequest(*navaros.Context)  {}
+func (wrapTestTransformer) TransformResponse(*navaros.Context) {}
+
+func TestRouter_Wrap_PanicsOnTransformer(t *testing.T) {
+	defer func() {
+		if r := recover(); r == nil {
+			t.Error("expected panic when passing transformer to Wrap")
+		}
+	}()
+
+	router := navaros.NewRouter()
+	router.Wrap(&wrapTestTransformer{})
+}

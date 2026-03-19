@@ -7,6 +7,7 @@ type HandlerNode struct {
 	Method                  HTTPMethod
 	Pattern                 *Pattern
 	HandlersAndTransformers []any
+	WrapHandlers            []HandlerFunc
 	Next                    *HandlerNode
 }
 

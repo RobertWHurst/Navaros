@@ -59,6 +59,40 @@ func (r *Router) RouteDescriptors() []*RouteDescriptor {
 	return r.routeDescriptors
 }
 
+// Wrap registers handlers that will be called around every subsequent handler
+// in the chain. Calling ctx.Next() from a wrap handler proceeds to the next
+// wrap handler, or the actual handler if there are no more wraps. Transformers
+// are not supported as wrap handlers.
+func (r *Router) Wrap(handlers ...any) {
+	var wrapHandlers []HandlerFunc
+	for _, handler := range handlers {
+		if _, ok := handler.(Transformer); ok {
+			panic("transformers are not supported as wrap handlers")
+		} else if h, ok := handler.(HandlerFunc); ok {
+			wrapHandlers = append(wrapHandlers, h)
+		} else if h, ok := handler.(func(*Context)); ok {
+			wrapHandlers = append(wrapHandlers, h)
+		} else if h, ok := handler.(Handler); ok {
+			wrapHandlers = append(wrapHandlers, h.Handle)
+		} else {
+			panic("invalid wrap handler type. Must be a Handler or HandlerFunc. Got: " +
+				reflect.TypeOf(handler).String())
+		}
+	}
+
+	node := &HandlerNode{
+		Method:       All,
+		WrapHandlers: wrapHandlers,
+	}
+	if r.firstHandlerNode == nil {
+		r.firstHandlerNode = node
+		r.lastHandlerNode = node
+	} else {
+		r.lastHandlerNode.Next = node
+		r.lastHandlerNode = node
+	}
+}
+
 // Use is for middleware handlers. It allows the handlers to be executed on
 // every request. If a path is provided, the middleware will only be executed
 // on requests that match the path.
