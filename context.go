@@ -220,7 +220,10 @@ func (c *Context) free() {
 	}
 
 	c.deadline = nil
+
+	c.mu.Lock()
 	c.doneChannel = nil
+	c.mu.Unlock()
 
 	contextPool.Put(c)
 }
@@ -253,7 +256,10 @@ func (c *Context) tryUpdateParent() {
 		c.parentContext.associatedValues[k] = v
 	}
 	c.parentContext.deadline = c.deadline
+
+	c.parentContext.mu.Lock()
 	c.parentContext.doneChannel = c.doneChannel
+	c.parentContext.mu.Unlock()
 }
 
 // Set attaches a value to the context. It can later be retrieved with Get.
