@@ -57,6 +57,7 @@ func (c *Context) Next() {
 					}
 					if c.currentHandlerNode.tryMatch(c) {
 						c.currentHandlerNodeMatches = true
+						c.matchedPattern = c.currentHandlerNode.Pattern
 						break
 					}
 					c.currentHandlerNode = c.currentHandlerNode.Next

@@ -58,6 +58,7 @@ type Context struct {
 	wrapHandlers                     []HandlerFunc
 	currentHandlerNode               *HandlerNode
 	currentHandlerNodeMatches        bool
+	matchedPattern                   *Pattern
 	currentHandlerOrTransformerIndex int
 	currentHandlerOrTransformer      any
 	currentWrapHandlerIndex          int
@@ -208,6 +209,7 @@ func (c *Context) free() {
 
 	c.currentHandlerNode = nil
 	c.currentHandlerNodeMatches = false
+	c.matchedPattern = nil
 	c.currentHandlerOrTransformerIndex = 0
 	c.currentHandlerOrTransformer = nil
 	c.wrapHandlers = nil
@@ -308,6 +310,15 @@ func (c *Context) Method() HTTPMethod {
 // Path returns the path of the request.
 func (c *Context) Path() string {
 	return c.path
+}
+
+// Pattern returns the route pattern string that matched the request (e.g.
+// "/devices/:id"), or an empty string if no pattern has matched yet.
+func (c *Context) Pattern() string {
+	if c.matchedPattern == nil {
+		return ""
+	}
+	return c.matchedPattern.String()
 }
 
 // URL returns the URL of the request.
