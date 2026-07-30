@@ -5,6 +5,7 @@ import (
 	"io"
 
 	"github.com/RobertWHurst/navaros"
+	"github.com/RobertWHurst/navaros/internal/mediatype"
 	"github.com/vmihailenco/msgpack/v5"
 )
 
@@ -32,8 +33,7 @@ func Middleware(options *Options) func(ctx *navaros.Context) {
 }
 
 func unmarshalRequestBody(ctx *navaros.Context) {
-	contentType := ctx.RequestHeaders().Get("Content-Type")
-	if contentType != "application/msgpack" {
+	if !mediatype.Is(ctx.RequestHeaders().Get("Content-Type"), "application/msgpack") {
 		return
 	}
 
