@@ -457,7 +457,9 @@ router.Get("/login", func(ctx *navaros.Context) {
 
 The JSON middleware automatically marshals and unmarshals JSON request and response bodies. It sets up the context's unmarshal and marshal functions to handle JSON encoding.
 
-For requests with `Content-Type: application/json`, it reads the body and provides an unmarshal function that decodes JSON into Go values. For responses, it marshals any non-reader body value to JSON before writing it.
+For requests whose `Content-Type` names `application/json`, it reads the body and provides an unmarshal function that decodes JSON into Go values. For responses, it marshals any non-reader body value to JSON before writing it.
+
+The media type is matched per RFC 9110 §8.3.1: the type and subtype are case-insensitive, and parameters are carried separately from the pair that identifies the media type — `application/json` registers no parameters of its own, so `application/json; charset=utf-8` is JSON. Structured syntax suffixes match too, so `application/problem+json` and `application/vnd.api+json` are also handled. Aliases such as `text/json`, and wildcards, are not.
 
 Pass `nil` for default configuration, or use `&json.Options{}` to customize:
 - `DisableRequestBodyUnmarshaller` - Skip setting up request unmarshalling
@@ -489,7 +491,7 @@ router.Post("/api/users", func(ctx *navaros.Context) {
 
 ### MessagePack Middleware
 
-The MessagePack middleware provides binary serialization support using MessagePack format. It automatically handles request unmarshalling and response marshalling for `Content-Type: application/msgpack`.
+The MessagePack middleware provides binary serialization support using MessagePack format. It automatically handles request unmarshalling and response marshalling for requests whose `Content-Type` names `application/msgpack`, matched the same way as in the JSON middleware above — parameters and case ignored, `+msgpack` suffixes accepted. Aliases such as `application/x-msgpack` are not.
 
 MessagePack is more compact and faster than JSON, making it ideal for high-performance APIs or bandwidth-constrained environments.
 
@@ -522,7 +524,7 @@ Like the JSON middleware, MessagePack middleware supports special response types
 
 ### Protocol Buffers Middleware
 
-The Protocol Buffers middleware provides efficient binary serialization using Protocol Buffers. It handles `Content-Type: application/protobuf`.
+The Protocol Buffers middleware provides efficient binary serialization using Protocol Buffers. It handles requests whose `Content-Type` names `application/protobuf`, matched the same way as in the JSON middleware above — parameters and case ignored, `+protobuf` suffixes accepted. Aliases such as `application/x-protobuf` are not.
 
 Protocol Buffers require you to define `.proto` schemas and generate Go code with `protoc`. The middleware works with any `proto.Message` implementation.
 

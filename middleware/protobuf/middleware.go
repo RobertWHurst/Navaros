@@ -6,6 +6,7 @@ import (
 	"io"
 
 	"github.com/RobertWHurst/navaros"
+	"github.com/RobertWHurst/navaros/internal/mediatype"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -33,8 +34,7 @@ func Middleware(options *Options) func(ctx *navaros.Context) {
 }
 
 func unmarshalRequestBody(ctx *navaros.Context) {
-	contentType := ctx.RequestHeaders().Get("Content-Type")
-	if contentType != "application/protobuf" {
+	if !mediatype.Is(ctx.RequestHeaders().Get("Content-Type"), "application/protobuf") {
 		return
 	}
 
